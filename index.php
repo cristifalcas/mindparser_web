@@ -10,6 +10,7 @@ foreach (get_customers() as $cust) {
 	## upload script is in another directory
 	$dir_full_path = dirname($_SERVER['SCRIPT_FILENAME'])."/scripts/uploads/$cust/$host/";
 	if (! is_dir ($dir_full_path)) {
+	    umask(0);
 	    mkdir($dir_full_path, 0775, true);
 	    chgrp($dir_full_path, "nobody");
 	    copy("scripts/uploads.htaccess", "$dir_full_path/.htaccess");

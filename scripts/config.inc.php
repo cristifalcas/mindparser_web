@@ -6,7 +6,6 @@ $db_pass = '!0mind_statistics@9';
 $db_database = 'mind_statistics';
 $customers_table = 'customers';
 $hosts_table = 'hosts';
-$stats_file_table = 'statistics_files';
 $customer="";
 $host="";
 
@@ -21,30 +20,13 @@ function connect_db() {
     }
 }
 
-function db_insert_file($customer, $host, $file_name, $processed_status) {
-    global $stats_file_table;
-    $create_table = "CREATE TABLE IF NOT EXISTS $stats_file_table
-	( id int not null AUTO_INCREMENT,
-	timestamp TIMESTAMP not null,
-	customer varchar(50) not null,
-	host varchar(50) not null,
-	file_name varchar(2500) not null,
-	processed int not null,
-	PRIMARY KEY(id))";
-    mysql_query($create_table) or die(mysql_error());
-
-    $query = "INSERT IGNORE INTO $stats_file_table (timestamp, customer, host, file_name, processed) VALUES(".time()."'$customer', '$host', '$file_name', '$processed_status')";
-    $result = mysql_query($query) or die("Error in query $query." .mysql_error()); 
-    return $result;
-}
-
 function get_customers() {
     global $customers_table;
-    $create_cust_table = "CREATE TABLE IF NOT EXISTS $customers_table
-	( id int not null AUTO_INCREMENT,
-	name varchar(50) UNIQUE,
-	PRIMARY KEY(id))";
-    mysql_query($create_cust_table) or die(mysql_error());
+//     $create_cust_table = "CREATE TABLE IF NOT EXISTS $customers_table
+// 	( id int not null AUTO_INCREMENT,
+// 	name varchar(50) UNIQUE,
+// 	PRIMARY KEY(id))";
+//     mysql_query($create_cust_table) or die(mysql_error());
 
     $rs = mysql_query("select * from $customers_table;") or print "get_customers: ".mysql_error();
     while($row = mysql_fetch_array($rs)){
@@ -57,15 +39,15 @@ function get_customers() {
 function get_hosts($customer) {
     global $hosts_table;
     $machines = array();
-    $create_cust_table = "CREATE TABLE IF NOT EXISTS $hosts_table
-	( id int not null AUTO_INCREMENT,
-	customer_id int,
-	name varchar(50),
-	ip varchar(50),
-	unique index(customer_id, name),
-	PRIMARY KEY(id),
-	FOREIGN KEY (customer_id) REFERENCES customers(id) )";
-    mysql_query($create_cust_table) or die(mysql_error());
+//     $create_cust_table = "CREATE TABLE IF NOT EXISTS $hosts_table
+// 	( id int not null AUTO_INCREMENT,
+// 	customer_id int,
+// 	name varchar(50),
+// 	ip varchar(50),
+// 	unique index(customer_id, name),
+// 	PRIMARY KEY(id),
+// 	FOREIGN KEY (customer_id) REFERENCES customers(id) )";
+//     mysql_query($create_cust_table) or die(mysql_error());
 
     $rs = mysql_query("select * from $hosts_table where customer_id in (select id from customers where name='$customer');") or print "get_hosts: ".mysql_error();
     while($row = mysql_fetch_array($rs)){

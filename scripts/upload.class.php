@@ -315,6 +315,8 @@ class UploadHandler
                     );
                 } else {
                     move_uploaded_file($uploaded_file, $file_path);
+		    chmod ($file_path, 0664); 
+		    chgrp ($file_path, "nobody");
                 }
             } else {
                 // Non-multipart uploads (PUT method support)
