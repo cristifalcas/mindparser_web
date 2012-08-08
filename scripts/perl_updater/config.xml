@@ -1,4 +1,4 @@
-<config>
+<out>
   <db_config>
     <collected_file_table>collected_files</collected_file_table>
     <cust_table>customers</cust_table>
@@ -9,4 +9,12 @@
     <md5_names_table>md5_col_names</md5_names_table>
     <stats_template_table>statistics_template</stats_template_table>
   </db_config>
-</config>
+  <dir_paths>
+    <filedone_dir>/var/www/html/mindparser/scripts/done/</filedone_dir>
+    <fileerr_dir>/var/www/html/mindparser/scripts/error/</fileerr_dir>
+    <filetmp_dir>/tmp/mind_parser/</filetmp_dir>
+    <uploads_dir>/var/www/html/mindparser/scripts/uploads/</uploads_dir>
+    <plugins_conf_dir_postfix>plugins_conf</plugins_conf_dir_postfix>
+    <munin_conf_dir_postfix>munin.conf</munin_conf_dir_postfix>
+  </dir_paths>
+</out>

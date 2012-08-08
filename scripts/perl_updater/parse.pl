@@ -30,14 +30,13 @@ use lib (fileparse(abs_path($0), qr/\.[^.]*/))[1]."our_perl_lib/lib";
 use Mind_work::SqlWork;
 
 my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
-my $uploads_prefix = "/var/www/html/mindparser/scripts/uploads/";
-MindCommons::makedir($uploads_prefix);
-my $filedone_prefix = "/var/www/html/mindparser/scripts/done/";
-MindCommons::makedir($filedone_prefix);
-my $fileerr_prefix = "/var/www/html/mindparser/scripts/error/";
-MindCommons::makedir($fileerr_prefix);
-my $filetmp_prefix = "/tmp/mind_parser/";
-MindCommons::makedir($filetmp_prefix);
+my $config = MindCommons::xmlfile_to_hash("config.xml");
+my $uploads_dir = $config->{dir_paths}->{uploads_dir};
+my $filedone_dir = $config->{dir_paths}->{filedone_dir};
+my $fileerr_dir = $config->{dir_paths}->{fileerr_dir};
+MindCommons::makedir($uploads_dir);
+MindCommons::makedir($filedone_dir);
+MindCommons::makedir($fileerr_dir);
 
 my $threads_stats = 1;
 my $threads_munin = 1;
@@ -98,11 +97,11 @@ sub parser_finish {
     my $dir_prefix;
     if ($ret > 100) { #error
 	WARN "Returned error $ret for $id = $filename.\n";
-	$dir_prefix = "$fileerr_prefix/$cust_name/$host_name/errcode_$ret/";
+	$dir_prefix = "$fileerr_dir/$cust_name/$host_name/errcode_$ret/";
     } elsif ($ret == 0) { #file was ignored by the function
 	exit $ret; 
     } else { #normal: >0 <=100
-	$dir_prefix = "$filedone_prefix/$cust_name/$host_name/";
+	$dir_prefix = "$filedone_dir/$cust_name/$host_name/";
     }
     MindCommons::makedir($dir_prefix);
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
@@ -215,7 +214,7 @@ sub periodic_checks {
 	($nr, $string) = (0,"");
 	get_kids($forks, $main_pid);
 	DEBUG "\n"."*" x 50 ."\n$string"."*" x 50 ."\n";
-	sleep 3;
+	sleep 30;
     };
 }
 
@@ -237,6 +236,9 @@ sub try_to_extract {
     my $flm = File::LibMagic->new();
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
     my $mime_type = $flm->checktype_filename($filename);
+
+    my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
+    MindCommons::makedir($filetmp_dir);
 
     DEBUG "Trying to extract $name$suffix\n";
     if ($mime_type eq 'text/plain; charset=us-ascii') {
@@ -269,7 +271,7 @@ sub try_to_extract {
 	return EXIT_WRONG_MINE;
     }
     my $ae = Archive::Extract->new( archive => $filename );
-    my $tmp_dir = "$filetmp_prefix/".MindCommons::get_random;
+    my $tmp_dir = "$filetmp_dir/".MindCommons::get_random;
     MindCommons::makedir($tmp_dir);
     DEBUG "Extracting in $thread_name file $filename to $tmp_dir\n";
     eval {$ae->extract( to => $tmp_dir ) or LOGDIE  $ae->error;};
@@ -447,8 +449,8 @@ sub main_process_worker {
     DEBUG Dumper($forks);
 
     my $db_h = new SqlWork();
-    assign_watchers($uploads_prefix);
-    insertFile ($db_h, $_) foreach (find_files_recursively($uploads_prefix));
+    assign_watchers($uploads_dir);
+    insertFile ($db_h, $_) foreach (find_files_recursively($uploads_dir));
 
     while (1) {
 	my @events = $inotify->read;

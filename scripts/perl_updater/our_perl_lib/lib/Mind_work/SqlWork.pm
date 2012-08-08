@@ -9,16 +9,9 @@ use DBI;
 use Log::Log4perl qw(:easy);
 
 use Mind_work::MindCommons;
-my $config = MindCommons::xmlfile_to_hash("config.xml");
-my $db_database = $config->{db_config}->{db_database};
-my $db_user = $config->{db_config}->{db_user};
-my $db_pass = $config->{db_config}->{db_pass};
-my $cust_table = $config->{db_config}->{cust_table};
-my $host_table = $config->{db_config}->{host_table};
-my $collected_file_table = $config->{db_config}->{collected_file_table};
-my $md5_names_table = $config->{db_config}->{md5_names_table};
-my $stats_template_table = $config->{db_config}->{stats_template_table};
-my ($db_h);
+my ($db_database, $db_user, $db_pass, 
+  $cust_table, $host_table, $collected_file_table, $md5_names_table, $stats_template_table, 
+  $db_h);
 
 Log::Log4perl->easy_init({ level   => $INFO,
 #                            file    => ">>test.log" 
@@ -27,6 +20,16 @@ Log::Log4perl->easy_init({ level   => $INFO,
 
 sub new {
     my $class = shift;
+    my $config = MindCommons::xmlfile_to_hash("config.xml");
+    $db_database = $config->{db_config}->{db_database};
+    $db_user = $config->{db_config}->{db_user};
+    $db_pass = $config->{db_config}->{db_pass};
+    $cust_table = $config->{db_config}->{cust_table};
+    $host_table = $config->{db_config}->{host_table};
+    $collected_file_table = $config->{db_config}->{collected_file_table};
+    $md5_names_table = $config->{db_config}->{md5_names_table};
+    $stats_template_table = $config->{db_config}->{stats_template_table};
+    
     my $self = { };
     $db_h = DBI->connect("DBI:mysql:$db_database", $db_user, $db_pass,
 	{ ShowErrorStatement => 1,

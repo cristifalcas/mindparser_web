@@ -6,57 +6,82 @@ use strict;
 
 use Munin::Node::SpoolWriter;
 use Munin::Common::Defaults;
-# my $worker_timeout = $worker->{node}->{configref}->{worker_timeout} ? int ($worker->{node}->{configref}->{worker_timeout}) : $self->{worker_timeout};
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
- use File::Path qw(make_path);
+use File::Path qw(make_path);
 
 use Mind_work::SqlWork;
 use Mind_work::MindCommons;
-my $config = MindCommons::xmlfile_to_hash("config.xml");
-# my $db_database = $config->{db_config}->{db_database};
-# my $db_user = $config->{db_config}->{db_user};
-# my $db_pass = $config->{db_config}->{db_pass};
-my $cust_table = $config->{db_config}->{cust_table};
-my $host_table = $config->{db_config}->{host_table};
-my $collected_file_table = $config->{db_config}->{collected_file_table};
-my $md5_names_table = $config->{db_config}->{md5_names_table};
-my $stats_template_table = $config->{db_config}->{stats_template_table};
-my $db_h;
-my $rate = 30;
-
-my $SPOOLDIR = "$Munin::Common::Defaults::MUNIN_SPOOLDIR";
-my $intervalsize = 86400;
-my $retaincount = 1;
-
-my ($plugin_rate, $plugin_name, $spoolwriter);
+# my $db_database, $db_user, $db_pass;
+my ($cust_table, $host_table, $collected_file_table, $md5_names_table, $stats_template_table, $db_h);
+my ($plugin_rate, $plugin_name, $spoolwriter, $munin_dbdir, $intervalsize, $retaincount, $rate);
+my ($plugins_conf_dir, $munin_conf_dir);
 
 sub setGlobalUpdateRate {
+    my $spool_dir = shift;
     use Fcntl;
     use DB_File;
     my %hash;
-    tie (%hash, 'DB_File', "$SPOOLDIR/plugin_rates", O_RDWR|O_CREAT, 0666) or die "$!";
+    tie (%hash, 'DB_File', "$spool_dir/plugin_rates", O_RDWR|O_CREAT, 0666) or die "$!";
 #     print Dumper(%hash);
     $hash{$plugin_name} = $plugin_rate;
     untie(%hash);
 }
 
-sub setVars {
-    my ($host) = @_;
-make_path "$SPOOLDIR/$host/" || die "can't create spoo, dir\n";
-open(MYOUTFILE, ">/media/share/Documentation/cfalcas/q/parse_logs/munin.conf.d/$host.conf") ||die "can't open file /media/share/Documentation/cfalcas/q/parse_logs/munin.conf.d/$host.conf: $!\n";
-print MYOUTFILE "[$host]\n\tupdate yes\n\t#worker_timeout 5\n\taddress ssh://munin\@localhost /opt/munin/lib/munin-async --spoolfetch --spooldir $SPOOLDIR/$host --cleanup";
-close(MYOUTFILE);
+sub initVars {
+    my ($host, $customer) = @_;
+    use Cwd 'abs_path';
+    use File::Basename;
+    my $config = MindCommons::xmlfile_to_hash("config.xml");
+#     my $db_database = $config->{db_config}->{db_database};
+#     my $db_user = $config->{db_config}->{db_user};
+#     my $db_pass = $config->{db_config}->{db_pass};
+    $cust_table = $config->{db_config}->{cust_table};
+    $host_table = $config->{db_config}->{host_table};
+    $collected_file_table = $config->{db_config}->{collected_file_table};
+    $md5_names_table = $config->{db_config}->{md5_names_table};
+    $stats_template_table = $config->{db_config}->{stats_template_table};
+
+    $plugins_conf_dir = $config->{dir_paths}->{plugins_conf_dir_postfix};
+    
+    $munin_dbdir = "$Munin::Common::Defaults::MUNIN_DBDIR";
+    $intervalsize = 86400;
+    $retaincount = 1;
+    $rate = 30;
+    
+    my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
+#     my $spool_dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/$customer/$host";
+    my $spool_dir = "$filetmp_dir/munin/$customer\_$host";
+    my $host_name = "$host.$customer";
+    make_path "$spool_dir" || die "can't create spool dir $spool_dir.\n";
     $spoolwriter = Munin::Node::SpoolWriter->new(
-	spooldir => "$SPOOLDIR/$host/",
+	spooldir => $spool_dir,
 	interval_size => $intervalsize,
 	interval_keep => $retaincount,
-	hostname  => $host,
+	hostname  => $host_name,
     );
-# use Munin::Node::SpoolReader;
-# my $spoolreader = Munin::Node::SpoolReader->new( spooldir => "$SPOOLDIR/$host/",);
-# print $spoolreader->fetch($last_epoch);
-# print Dumper($spoolreader);
+    
+    my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
+#     print Dumper($script_path); exit 1;
+    # rundir  filetmp_dir/munin.locks/
+# includedir /media/share/Documentation/cfalcas/q/parse_logs/conf.d/
+
+    $munin_conf_dir = "$script_path/".$config->{dir_paths}->{munin_conf_dir_postfix};
+#     make_path "$munin_conf_dir" || die "can't create spool dir $munin_conf_dir.\n";
+#     make_path "$munin_conf_dir/conf.d/" || die "can't create spool dir $munin_conf_dir/conf.d/.\n";
+#     make_path "$filetmp_dir/munin/$customer\_$host/" || die "can't create spool dir $filetmp_dir/munin.locks/.\n";
+
+    my $conf_file = "$munin_conf_dir/$customer\_$host.conf";
+    open(MYOUTFILE, ">$conf_file") ||die "can't open file $conf_file: $!\n";
+    print MYOUTFILE "
+rundir $filetmp_dir/munin/$customer\_$host/
+dbdir $filetmp_dir/munin/$customer\_$host/
+
+[$host_name]
+      update yes
+      #worker_timeout 5
+      address ssh://munin\@localhost /opt/munin/lib/munin-async --spoolfetch --spooldir $spool_dir --cleanup";
+    close(MYOUTFILE);
 }
 
 sub getCustomerName {
@@ -69,8 +94,14 @@ sub getHostName {
     return $db_h->selectrow_array("select name from hosts where id=$host_id");
 }
 
-sub getFileInfo {
+sub getLastTimestamp{
+    my ($host, $customer) = @_;
+    use Storable;
+    my $state_file = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$host.$customer");
+    my $storable = eval { Storable::retrieve($state_file); };
+    return $storable->{spoolfetch};
 }
+
 
 sub run {
     my ($dbh, $host_id, $files) = @_;
@@ -80,8 +111,8 @@ sub run {
     my ($type) = $stats_table =~ m/^([^_]+)/;
     my $customer = getCustomerName($host_id);
     my $host = getHostName($host_id);
-# next if $customer ne "Alon";
-    setVars("$host.$customer");
+
+    initVars($host, $customer);
 
     my ($sth, @columns);
     eval {
@@ -95,22 +126,20 @@ sub run {
     $sth = $db_h->prepare("SELECT * FROM $md5_names_table WHERE md5 in (". (join ",", map {$db_h->quote($_)} @columns).")");
     $sth->execute() || die "Error $DBI::errstr\n";
     my $colums_name = $sth->fetchall_hashref('md5');
-    
-	use Storable;
-	my $state_file = sprintf ('%s/state-%s.storable', "$Munin::Common::Defaults::MUNIN_DBDIR", "$customer-$host.$customer");
-	my $storable = eval { Storable::retrieve($state_file); };
-	my $last_update = $storable->{spoolfetch} || ($db_h->selectrow_array("select min(timestamp) from $stats_table WHERE host_id=$host_id")||0);
-	my $from_time = $last_update - $rate;
-	my $to_time = $from_time + $intervalsize;
-    $db_h->{'mysql_use_result'}=1;
-    $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time and timestamp<=$to_time and file_id in (". (join ",", @$files).") order by timestamp");
+
+    my $last_update = getLastTimestamp($host, $customer)  || ($db_h->selectrow_array("select min(timestamp) from $stats_table WHERE host_id=$host_id")||0);
+    my $from_time = $last_update - $rate;
+    my $to_time = $from_time + $intervalsize;# and timestamp<=$to_time
+    $db_h->{'mysql_use_result'} = 1;
+    $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time and file_id in (". (join ",", @$files).") order by timestamp");
     $sth->execute() || die "Error $DBI::errstr\n";
 # my $q=1;
-    while (my $aref = $sth->fetchall_arrayref({}, 4000) ){
+    while (my $aref = $sth->fetchall_arrayref({}, 2000) ){
+my $first = 0;my $last = 0;
 	foreach my $row (@$aref){
 	my $output_rows = [
 	    "graph_title $stats_table",
-	    "graph_vlabel entropy (bytes)_doco",
+# 	    "graph_vlabel eceva pt vlabel",
 	    "graph_scale no",
 	    "graph_category $customer"."_$type",
 	    "graph_info $md5_names_table",
@@ -126,18 +155,24 @@ sub run {
 		    "$md5.label $name",
 		    "$md5.info $name",
 		    "$md5.value $val",
-# 		    "$md5.update_rate $rate",
+		    "$md5.update_rate $rate",
 		);
 	    }
-	    $plugin_rate = $rate;
+# 	    $plugin_rate = $rate;
 	    $plugin_name = "test_$host\_$customer\_mind";  # does not contain spaces
 # 	    push $output_rows, ("$md5.update_rate $rate",);
 # 	    print Dumper($row->{timestamp});
 	    $spoolwriter->write($row->{timestamp}, $plugin_name, $output_rows);
+print "First update at $row->{timestamp}\n" if !$first;
+	    $first = $row->{timestamp};
 # $spoolwriter->write(1344181683+$q*200, $plugin_name, $output_rows);$q++;
 	}
 	print "got nr rows : ".(scalar @$aref)."\n";
-	return;
+	return if ! (scalar @$aref);
+# 	system("/opt/munin/lib/munin-update", "--host", "$host.$customer", "--config_file=$munin_conf_dir/munin.conf");
+	system("/opt/munin/lib/munin-update", "--config_file=$munin_conf_dir/$customer\_$host.conf", "--host", "$host.$customer");
+print "Last update at $first\n" if $first;
+# 	return;
     }
 #     /opt/munin/lib/munin-update --debug --host backend1.Alon --timeout 20 --config_file=/media/share/Documentation/cfalcas/q/parse_logs/munin.conf.d/munin.conf
 }

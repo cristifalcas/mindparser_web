@@ -4,14 +4,11 @@ use warnings;
 use strict;
 
 use File::Path qw(make_path remove_tree);
-# use Unicode::Normalize 'NFD','NFC','NFKD','NFKC';
 # use Digest::MD5 qw(md5_hex);
 # use File::Basename;
 # use File::Copy;
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
-use XML::Simple;
-use Encode;
 
 my $debug = 0;
 
@@ -21,18 +18,20 @@ sub get_random {
 
 sub xmlfile_to_hash {
     my $file = shift;
+    use XML::Simple;
     my $xml = new XML::Simple;
-    return $xml->XMLin("$file");
+    return $xml->XMLin($file);
 }
 
 sub hash_to_xmlfile {
-    my ($hash, $name, $root_name) = @_;
+    my ($file, $hash, $root_name) = @_;
+    use XML::Simple;
     $root_name = "out" if ! defined $root_name;
     my $xs = new XML::Simple();
     my $xml = $xs->XMLout($hash,
 		    NoAttr => 1,
 		    RootName=>$root_name,
-		    OutputFile => $name
+		    OutputFile => $file
 		    );
 }
 
@@ -102,6 +101,8 @@ sub makedir {
 
 # sub normalize_text {
 #     my $str = shift;
+#     use Encode;
+#     use Unicode::Normalize 'NFD','NFC','NFKD','NFKC';
 #     ## from http://www.ahinea.com/en/tech/accented-translate.html
 #     for ( $str ) {  # the variable we work on
 # 	##  convert to Unicode first
