@@ -51,31 +51,22 @@ sub initVars {
     
     my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
 #     my $spool_dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/$customer/$host";
-    my $spool_dir = "$filetmp_dir/munin/$customer\_$host";
-    my $host_name = "$host.$customer";
+    my $spool_dir = "$filetmp_dir/munin/$customer\_$host/";
     make_path "$spool_dir" || die "can't create spool dir $spool_dir.\n";
+    my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
+    $munin_conf_dir = "$script_path/".$config->{dir_paths}->{munin_conf_dir_postfix};
+
     $spoolwriter = Munin::Node::SpoolWriter->new(
 	spooldir => $spool_dir,
 	interval_size => $intervalsize,
 	interval_keep => $retaincount,
-	hostname  => $host_name,
+	hostname  => "$host.$customer",
     );
     
-    my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
-#     print Dumper($script_path); exit 1;
-    # rundir  filetmp_dir/munin.locks/
-# includedir /media/share/Documentation/cfalcas/q/parse_logs/conf.d/
-
-    $munin_conf_dir = "$script_path/".$config->{dir_paths}->{munin_conf_dir_postfix};
-#     make_path "$munin_conf_dir" || die "can't create spool dir $munin_conf_dir.\n";
-#     make_path "$munin_conf_dir/conf.d/" || die "can't create spool dir $munin_conf_dir/conf.d/.\n";
-#     make_path "$filetmp_dir/munin/$customer\_$host/" || die "can't create spool dir $filetmp_dir/munin.locks/.\n";
-
-    my $conf_file = "$munin_conf_dir/$customer\_$host.conf";
-    open(MYOUTFILE, ">$conf_file") ||die "can't open file $conf_file: $!\n";
+    open(MYOUTFILE, ">$munin_conf_dir/$customer\_$host.con") ||die "can't open file $munin_conf_dir/$customer\_$host.con: $!\n";
     print MYOUTFILE "
-rundir $filetmp_dir/munin/$customer\_$host/
-dbdir $filetmp_dir/munin/$customer\_$host/
+rundir $spool_dir
+dbdir $spool_dir
 
 [$host_name]
       update yes
