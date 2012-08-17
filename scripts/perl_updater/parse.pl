@@ -41,6 +41,7 @@ MindCommons::makedir($fileerr_dir);
 my $threads_stats = 1;
 my $threads_munin = 1;
 my $threads_log = 0;
+my $dbh;
 
 use constant {
     EXIT_STATUS_NA	=>-1,
@@ -56,6 +57,7 @@ use constant {
     EXIT_NO_LINES	=> 110,
     EXIT_WRONG_MINE	=> 122,
     EXIT_EXTR_ERR	=> 150,
+    EXIT_NO_ROWS	=> 200,
 };
 
 my $inotify = Linux::Inotify2->new;
@@ -81,14 +83,13 @@ sub reap_children {
 }
 
 sub parser_getwork {
-    my $dbh = shift;
     my $ret = $dbh->getFilesForParsers();
     return $ret;
 }
 
 sub parser_finish {
-    my ($dbh, $id, $ret) = @_;
-    $thread_name = $thread_name."_".$id;
+    my ($id, $ret) = @_;
+#     $thread_name = $thread_name."_".$id;
     my $hash = $dbh->getFile($id);
     my $filename = $hash->{file_name};
     my $cust_name = $dbh->get_customer_name($hash->{customer_id});
@@ -99,7 +100,7 @@ sub parser_finish {
 	WARN "Returned error $ret for $id = $filename.\n";
 	$dir_prefix = "$fileerr_dir/$cust_name/$host_name/errcode_$ret/";
     } elsif ($ret == 0) { #file was ignored by the function
-	exit $ret; 
+	return $ret; 
     } else { #normal: >0 <=100
 	$dir_prefix = "$filedone_dir/$cust_name/$host_name/";
     }
@@ -113,33 +114,35 @@ sub parser_finish {
 }
 
 sub munin_getwork {
-    my $dbh = shift;
     my $ret = $dbh->getWorkForMunin(EXIT_STATS_SUCCESS);
     return $ret;
 }
 
 sub munin_update {
-    my ($dbh, $host_id, $files) = @_;
+    my ($host_id, $files) = @_;
     use Mind_work::MuninWork;
     $0 = "munin_update_$0";
-    MuninWork::run($dbh, $host_id, $files);
     INFO "running munin ".Dumper($host_id);
-    return EXIT_IGNORE;# EXIT_MUNIN_SUCCESS
+    my $ret = MuninWork::run($dbh, $host_id, $files);
+    return $ret;
 }
 
 sub munin_finish {
-    my ($dbh, $id, $ret) = @_;
-    my $ret1;
-    return $ret1;
+    my ($id, $status) = @_;
+    if ($status == EXIT_MUNIN_SUCCESS) {
+	$dbh->doneWorkForMunin($id, $status, EXIT_STATS_SUCCESS);
+    } else {
+	INFO "Munin did not finish succesfully: $status\n";
+    }
 }
 
 sub focker_launcher {
-    my ($function, $getwork, $finish, $max_procs) = @_;
+    my ($dowork, $getwork, $finishwork, $max_procs) = @_;
     my $running;
-    my $dbh = new SqlWork();
+    $dbh = new SqlWork();
     my @thread = (1..$max_procs);
     use B qw(svref_2object);
-    my $cv = svref_2object ( $function );
+    my $cv = svref_2object ( $dowork );
     $thread_name = $cv->GV->NAME;
     $0 = "main_".$thread_name;
     INFO "Starting forker process $thread_name.\n";
@@ -161,8 +164,8 @@ sub focker_launcher {
 		$0 = "$crt";
 		DEBUG "Starring $thread_name with id=$id\n";
 		$dbh->cloneForFork();
-		my $ret = $function->($dbh, $id, $data->{$id});
-		$finish->($dbh, $id, $ret);
+		my $ret = $dowork->($id, $data->{$id});
+		$finishwork->($id, $ret);
 		DEBUG "Done $thread_name with status $ret (id=$id).\n";
 		$dbh->disconnect;
 		exit $ret;
@@ -220,18 +223,20 @@ sub periodic_checks {
 
 sub get_table_name {
     my $name = shift;
-    my $table_name;
-    my $type;
-    if ($name =~ m/^(rts(statistics|info))/i) {
+    my ($table_name, $type, $app);
+
+    if ($name =~ m/^((.*)?(statistics|info))/i) {
 	$table_name = lc($1);
-	$type = lc($2);
+	$app = $2;
+	$type = lc($3);
     }
-    return ($table_name, $type);
+    return ($table_name, $app, $type);
 }
+
+sub try_to_extract {
     use Archive::Extract;
     use File::LibMagic;
 
-sub try_to_extract {
     my $filename = shift;
     my $flm = File::LibMagic->new();
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
@@ -293,7 +298,7 @@ sub try_to_extract {
 }
 
 sub parse_statistics {
-    my ($dbh, $fileid) = @_;
+    my $fileid = shift;
     $0 = "parse_stats_$0";
     
     my $hash = $dbh->getFile($fileid);
@@ -301,12 +306,12 @@ sub parse_statistics {
     my $host_name = $dbh->get_host_name($hash->{host_id});
     my $filename = $hash->{file_name};
     return EXIT_NO_FILE if (! -f $filename);
-    my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
-    my ($table_name, $type) = get_table_name("$name$suffix");
+    my ($name, $dir, $suffix) = fileparse($filename, qr/\.[^.]*/);
+    my ($table_name, $app, $type) = get_table_name("$name$suffix");
     $table_name .= "_".lc($cust_name);
     $table_name = substr($table_name, 0, 64);  ## 64 is the max size of table name
     if (! defined $type || $type ne "statistics") {
-	DEBUG "Probably not for $0: $name$suffix from $cust_name, machine $host_name.\n";
+	DEBUG "Probably not for $0: $name$suffix from $cust_name, machine $host_name: ".Dumper("$name$suffix",$table_name, $app, $type);
 	return EXIT_IGNORE;
     }
     INFO "Parsing $0 file $name$suffix (id=$fileid) as $table_name from $cust_name, machine $host_name.\n";
@@ -321,7 +326,7 @@ sub parse_statistics {
 	my @arr = map {s/(\r)|(^\s*)|(\s*$)//g; $_ } split /,/, $line;
 	$count++;
 	if ($count == 1) {
-	    if ($line !~ m/^Date,Time,/i){
+	    if ($line !~ m/^Date,\s*Time,/i){
 	      close (MYFILE); 
 	      return EXIT_WRONG_TYPE ;
 	    }
@@ -359,6 +364,7 @@ sub parse_statistics {
 	    my $new_vals;
 	    ## 1=timestamp, 2=date, 3=time
 	    for (my $i = 3; $i < scalar @header; $i++) {
+print Dumper($header_hash->{$header[$i]}, $header_hash, @header, $i);
 		$columns .= ",$header_hash->{$header[$i]}" if $count == 2;
 		$new_vals .= ", $arr[$i]";
 	    }
@@ -382,14 +388,14 @@ sub parse_statistics {
 }
 
 sub parse_logs {
-    my ($dbh, $fileid) = @_;
+    my $fileid = shift;
     $0 = "parse_logs_$0";
     my $hash = $dbh->getFile($fileid);
     my $cust_name = $dbh->get_customer_name($hash->{customer_id});
     my $host_name = $dbh->get_host_name($hash->{host_id});
     my $filename = $hash->{file_name};
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
-    my ($table_name, $type) = get_table_name("$name$suffix");
+    my ($table_name, $app, $type) = get_table_name("$name$suffix");
     $table_name .= "_".lc($cust_name);
     $table_name = substr($table_name, 0, 64);  ## 64 is the max size of table name
     if (! defined $type || $type ne "info") {
@@ -405,9 +411,9 @@ sub parse_logs {
 }
 
 sub check_cust_host {
-    my ($db_h, $file) = @_;
+    my $file = shift;
     my ($name,$dir,$suffix) = fileparse($file, qr/\.[^.]*/);
-    my $customers = $db_h->getCustomers;
+    my $customers = $dbh->getCustomers;
     my ($file_c, $file_h) = $dir =~ m/^.+\/([^\/]+)\/+([^\/]+)\/$/;
     my ($cust_id, $host_id) = ($customers->{$file_c}->{'id'}, $customers->{$file_c}->{'hosts'}->{$file_h});
     LOGDIE  "Strange file $file\n".Dumper($customers) if ! defined $cust_id || ! defined $host_id;
@@ -415,16 +421,16 @@ sub check_cust_host {
 }
 
 sub insertFile {
-    my ($db_h, $file) = @_;
+    my $file = shift;
 #     my $ret = ;
 # print Dumper($ret, EXIT_IGNORE);
     return EXIT_NO_FILE if ! -f $file || -d $file;
     return if ( try_to_extract($file) != EXIT_IGNORE);
     my ($name,$dir,$suffix) = fileparse($file, qr/\.[^.]*/);
     return EXIT_NO_FILE if "$name$suffix" =~ m/^\./;
-    my ($cust_id, $host_id) = check_cust_host($db_h, $file);
+    my ($cust_id, $host_id) = check_cust_host($file);
     INFO "Adding file $file.\n";
-    $db_h->insertFile ($cust_id, $host_id, $file, -s $file,  EXIT_STATS_EXPECTS);
+    $dbh->insertFile ($cust_id, $host_id, $file, -s $file,  EXIT_STATS_EXPECTS);
 }
 
 sub main_process_worker {
@@ -448,9 +454,9 @@ sub main_process_worker {
     $forks->{$pid} = "checks";
     DEBUG Dumper($forks);
 
-    my $db_h = new SqlWork();
+    $dbh = new SqlWork();
     assign_watchers($uploads_dir);
-    insertFile ($db_h, $_) foreach (find_files_recursively($uploads_dir));
+    insertFile ($_) foreach (find_files_recursively($uploads_dir));
 
     while (1) {
 	my @events = $inotify->read;
@@ -465,13 +471,13 @@ sub main_process_worker {
 		delete $watched_folders->{$event->fullname};
 	    } elsif (($event->IN_CLOSE_WRITE || $event->IN_MOVED_FROM || $event->IN_MOVED_TO) && -f $event->fullname) {
 # 		try_to_extract($event->fullname); ## ret code > 0 means problems
-		insertFile ($db_h, $event->fullname);
+		insertFile ($event->fullname);
 	    } elsif ($event->IN_CREATE && -d $event->fullname) {
 		DEBUG "Add dir ".$event->fullname."\n";
 	    }
 	}
     }
-    $db_h->disconnect;
+    $dbh->disconnect;
 
     ## take care of threads (we should never reach this point)
     while (scalar keys %$forks) {

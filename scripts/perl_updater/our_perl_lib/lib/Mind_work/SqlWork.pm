@@ -109,11 +109,11 @@ sub getCustomers {
     return $hash;
 }
 
-# start work if stats file done and no other stats pending. thread should be per host+stats type
+# start work if stats file done and no other stats pending. thread should be per host
 sub getWorkForMunin {
     my ($self, $status) = @_;
+return;
     my $hash = $db_h->selectall_hashref("select * from $collected_file_table where status=$status or status=0 and inserted_in_tablename is not null", ['host_id', 'inserted_in_tablename', 'status', 'id']);
-# print Dumper($hash);
     my ($ret, $checker);
     foreach my $h_id (keys %$hash){
 	my $host_tables = $hash->{$h_id};
@@ -123,12 +123,19 @@ sub getWorkForMunin {
 		LOGDIE "We have the same file id=$f_id to different hosts.".Dumper($checker) if defined $checker->{$f_id};
 		$checker->{$f_id} = $h_id;
 	    }
-	    next if defined $host_tables->{$table}->{0} || ! defined $host_tables->{$table}->{$status};
+	    return if defined $host_tables->{$table}->{0} || ! defined $host_tables->{$table}->{$status};
 	    $ret->{"$h_id:$table"} = [keys %$files_id];
 	}
     }
-# print Dumper($ret);
+print Dumper($ret);
     return $ret;
+}
+
+sub doneWorkForMunin {
+    my ($self, $id, $new_status, $old_status) = @_;
+    ## $id is like 1:rtsstatistics_alon'
+    my ($host_id, $stats_table) = $id =~ m/^(.+):(.+)$/;
+#     my $sth = $db_h->do("update $collected_file_table set status=$new_status WHERE host_id=$host_id and inserted_in_tablename='$stats_table' and status=$old_status") || die "Error $DBI::errstr\n";
 }
 
 sub getFilesForParsers {
@@ -189,13 +196,20 @@ sub add_new_columns {
     my ($self, $table_name, $arr) = @_;
     DEBUG "Acquiring lock\n";
     $db_h->do("LOCK TABLES $table_name WRITE, $md5_names_table WRITE");
+    my $sha1_hash;
+    $sha1_hash->{"x_".MindCommons::get_string_sha($_)} = $_ foreach (@$arr);
+
+    my $md5_existing = $db_h->selectrow_arrayref("select * from $md5_names_table");
     my $columns_e = getColumnList($self, $table_name);
-    my $md5_columns = ['id', 'file_id', 'timestamp', map{"x_".MindCommons::get_string_sha($_)} @$arr];
-    my ($only_in_arr1, $only_in_arr2, $intersection) = MindCommons::array_diff( $md5_columns, $columns_e);
-    while (my ($index, $md5) = each @$only_in_arr1) {
-	INFO "Adding new column $md5 for table $table_name\n";
-	$db_h->do("ALTER TABLE $table_name ADD $md5 decimal(15,5)");
-	$db_h->do("INSERT IGNORE INTO $md5_names_table (md5, name) VALUES ('$md5', '$arr->[$index]')");
+    my ($only_in_arr1, $only_in_arr2, $intersection) = MindCommons::array_diff( $md5_existing, $columns_e);
+print Dumper($only_in_arr1, $only_in_arr2, $intersection);exit 1;
+    my $md5_columns = ['id', 'file_id', 'timestamp', keys %$sha1_hash];
+    ($only_in_arr1, $only_in_arr2, $intersection) = MindCommons::array_diff( $md5_columns, $columns_e);
+
+    while (my ($index, $sha1) = each @$only_in_arr1) {
+	INFO "Adding new column $sha1 ($sha1_hash->{$sha1}) for table $table_name\n";
+	$db_h->do("ALTER TABLE $table_name ADD $sha1 decimal(15,5)") || die "Error $DBI::errstr\n";
+	$db_h->do("INSERT IGNORE INTO $md5_names_table (md5, name) VALUES ('$sha1', '$arr->[$index]')") || die "Error $DBI::errstr\n";
     }
     DEBUG "Releasing lock\n";
     $db_h->do("UNLOCK TABLES");
