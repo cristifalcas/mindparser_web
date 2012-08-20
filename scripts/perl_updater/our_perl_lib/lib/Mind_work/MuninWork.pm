@@ -89,11 +89,9 @@ sub initVars {
     $retaincount = 1;
     $rate = 300;
 
-#     ($host_id, $stats_table) = $host_id=~ m/^(.+):(.+)$/;
     $customer = getCustomerName($host_id);
     $host = getHostName($host_id);
     $hostname = "$host.$customer";
-#     ($type) = $stats_table =~ m/^([^_]+)/;
 
     my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
     $work_dir = "$filetmp_dir/munin/$customer\_$host/";
@@ -110,7 +108,6 @@ sub initVars {
     );
     
     $conf_file = "$work_dir/$customer\_$host.conf";
-#     return $host_id;
 }
 
 sub getCustomerName {
@@ -160,15 +157,8 @@ sub copyOldFiles {
 		make_path "$work_dir/$customer" || LOGDIE "can't create dir $work_dir/$customer.\n";
 		copy ($_, "$work_dir/$customer/") or LOGDIE "can't copy rrd file $_: $!\n";
 	    };
-#     use Storable;
-#     my $state_file = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$hostname");
-#     my $storable = eval { Storable::retrieve($state_file); };
-#     return $storable->{spoolfetch};
 	    my $storable_hash = eval { Storable::retrieve("$work_dir/$name$suffix"); };
-#     my $last_timestamp = $storable->{spoolfetch}
-# print Dumper($storable_hash->{spoolfetch});
 	    $storable_hash->{spoolfetch} = $last_timestamp;
-# print Dumper($storable_hash->{spoolfetch});
 	    Storable::nstore($storable_hash, "$work_dir/$name$suffix");
 	}
     } elsif ($direction == 2) {
@@ -195,91 +185,72 @@ sub copyOldFiles {
 sub run {
     my ($prev_dbh, $host_id, $tables) = @_;
     $db_h = $prev_dbh->getDBI_handler();
-# print Dumper($host_id, $tables);return;
     initVars($host_id);
-foreach my $stats_table (keys %$tables) {
-    INFO "Start updating $stats_table from host id=$host_id, name=$hostname\n";
-    my $colums_name = getColumns($stats_table);
-    my ($type) = $stats_table =~ m/^([^_]+)/;
-    my $plugin_name = "test_$type\_$host\_$customer\_mind";  # MUST contain only 0-9a-z_
-    if (! -f "$plugins_conf_dir/$plugin_name.conf" || ! -s "$plugins_conf_dir/$plugin_name.conf") {
-	open(FILE, ">$plugins_conf_dir/$plugin_name.conf") or LOGDIE "Can't open file for writing: $!\n";
-	foreach (keys %$colums_name) {
-	    next if $colums_name->{$_}->{name} =~ m/^\s*Date\s*$/i || $colums_name->{$_}->{name} =~ m/^\s*Time\s*$/i;
-	    print FILE $colums_name->{$_}->{name}."\n";
+    foreach my $stats_table (keys %$tables) {
+	INFO "Start updating $stats_table from host id=$host_id, name=$hostname\n";
+	my $colums_name = getColumns($stats_table);
+	my ($type) = $stats_table =~ m/^([^_]+)/;
+	my $plugin_name = "test_$type\_$host\_$customer\_mind";  # MUST contain only 0-9a-z_
+	if (! -f "$plugins_conf_dir/$plugin_name.conf" || ! -s "$plugins_conf_dir/$plugin_name.conf") {
+	    open(FILE, ">$plugins_conf_dir/$plugin_name.conf") or LOGDIE "Can't open file for writing: $!\n";
+	    foreach (keys %$colums_name) {
+		next if $colums_name->{$_}->{name} =~ m/^\s*Date\s*$/i || $colums_name->{$_}->{name} =~ m/^\s*Time\s*$/i;
+		print FILE $colums_name->{$_}->{name}."\n";
+	    }
+	    close(FILE);
+	}
+
+	my $graph_name;
+	open(FILE, "$plugins_conf_dir/$plugin_name.conf") or LOGDIE "Can't open file for reading: $!\n";
+	my $section = "Other";
+	foreach my $name (<FILE>) {
+	    $name =~ s/(\n*|\r*)//g;
+	    if ($name =~ m/^\s*\[(.*?)\]\s*$/){
+		$section = $1;
+	    } else {
+		$graph_name->{$name} = $section;
+	    }
 	}
 	close(FILE);
-# print Dumper(getColumns($stats_table));exit 1;
-    }
 
-    my $graph_name;
-    open(FILE, "$plugins_conf_dir/$plugin_name.conf") or LOGDIE "Can't open file for reading: $!\n";
-    my $section = "Other";
-    foreach my $name (<FILE>) {
-	$name =~ s/(\n*|\r*)//g;
-	if ($name =~ m/^\s*\[(.*?)\]\s*$/){
-	    $section = $1;
-	} else {
-	    $graph_name->{$name} = $section;
-	}
-    }
-    close(FILE);
+	my $from_time = copyOldFiles(1, $plugin_name);
 
-    my $from_time = copyOldFiles(1, $plugin_name);
-#  || ($db_h->selectrow_array("select min(timestamp) from $stats_table WHERE host_id=$host_id") || 0)
+	$db_h->{'mysql_use_result'} = 1;
+	$db_h->{'mysql_auto_reconnect'} = 1;
+	DEBUG "Getting lines from $stats_table with host_id=$host_id, timestamp=$from_time\n";
+	my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp");
+	$sth->execute() || LOGDIE "Error $DBI::errstr\n";
 
-#     $from_time = copyOldFiles(1, $plugin_name);
-
-#     my $last_update = getLastTimestamp || 
-# 	      ($db_h->selectrow_array("select min(timestamp) from $stats_table WHERE host_id=$host_id") || 0);
-#     my $from_time = $last_update - $rate;
-    $db_h->{'mysql_use_result'} = 1;
-    $db_h->{'mysql_auto_reconnect'} = 1;
-
-    DEBUG "Getting lines from $stats_table with host_id=$host_id, timestamp=$from_time\n";
-    my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp");
-    $sth->execute() || LOGDIE "Error $DBI::errstr\n";
-
-    my $first = 1;
-    while (my $aref = $sth->fetchall_arrayref({}, 1000) ){
-	return EXIT_NO_ROWS if ! (scalar @$aref);
-	if ($first){
-	    writeConfFiles();
-	    $first = 0;
-# 		$spoolwriter->write($row->{timestamp}, $plugin_name, $output_rows);
-# 		my @files = glob("$work_dir/munin-daemon.$plugin_name.*");
-# 		LOGDIE "Too many files\n" if scalar @files != 1;
-# 		my $dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/$hostname/";
-# 		rmtree ($dir);
-# 		make_path $dir or LOGDIE "can't make dir $dir: $!\n";
-# 		move ($files[0], $dir) or LOGDIE "can't move file: $!\n";
-	}
-	unlink glob ("$work_dir/munin-daemon.$plugin_name.*");
-	DEBUG "got nr rows : ".(scalar @$aref)."\n";
-	foreach my $row (@$aref){
-	    my @output_rows = (
-# 		"graph_title $stats_table",
-# 		"graph_vlabel eceva pt vlabel",
-		"graph_scale no",
-		"graph_category $customer"."_$type",
-		"graph_info $stats_table",
-		"update_rate $rate",
-		"graph_data_size custom 115200",
-# 		"hostname $hostname",
-		);
-my $q;
-# http://membersresource.dialogic.com/_releases/ss7/ProductSpecific/SS7G3x/Software/ss7g30-siu.tgz
-# cntms:module=mtp,imask=0xffffffff,omask=0xffffffff,mmask=0xffffffff,active=y;
-# cntms:module=isup,imask=0xffffffff,omask=0xffffffff,mmask=0xffffffff,active=y;
-	   foreach my $md5 (keys %$row) {
+	my $first = 1;
+	while (my $aref = $sth->fetchall_arrayref({}, 1000) ){
+	    return EXIT_NO_ROWS if ! (scalar @$aref);
+	    if ($first){
+		writeConfFiles();
+		$first = 0;
+	    }
+	    unlink glob ("$work_dir/munin-daemon.$plugin_name.*");
+	    DEBUG "got nr rows : ".(scalar @$aref)."\n";
+	    foreach my $row (@$aref){
+		my @output_rows = (
+    # 		"graph_title $stats_table",
+    # 		"graph_vlabel eceva pt vlabel",
+		    "graph_scale no",
+		    "graph_category $customer"."_$type",
+		    "graph_info $stats_table",
+		    "update_rate $rate",
+		    "graph_data_size custom 115200",
+    # 		"hostname $hostname",
+		    );
+	    my $q;
+    # http://membersresource.dialogic.com/_releases/ss7/ProductSpecific/SS7G3x/Software/ss7g30-siu.tgz
+    # cntms:module=mtp,imask=0xffffffff,omask=0xffffffff,mmask=0xffffffff,active=y;
+    # cntms:module=isup,imask=0xffffffff,omask=0xffffffff,mmask=0xffffffff,active=y;
+	    foreach my $md5 (keys %$row) {
 		next if ! defined $row->{$md5} || $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i;
 		my $val = defined $row->{$md5} ? $row->{$md5} : "undef";
 # 		my $name = $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i ? $md5 : $colums_name->{$md5}->{name};
 		my $name = $colums_name->{$md5}->{name};
-# print Dumper($graph_name,$name);
-# print "title is $graph_name->{$name}\n";
-push @{$q->{$graph_name->{$name}}}, (@output_rows, "graph_title $graph_name->{$name}") if ! defined $q->{$graph_name->{$name}};
-# print Dumper($q);exit 1;
+		push @{$q->{$graph_name->{$name}}}, (@output_rows, "graph_title $graph_name->{$name}") if ! defined $q->{$graph_name->{$name}};
 		push @{$q->{$graph_name->{$name}}}, (
 # 		    "multigraph $graph_name->{$name}",
 		    "$md5.label $name",
@@ -287,20 +258,19 @@ push @{$q->{$graph_name->{$name}}}, (@output_rows, "graph_title $graph_name->{$n
 		    "$md5.value $val",
 		);
 	    }
-# print Dumper($q);exit 1;
-# print Dumper($q->{$_}) foreach (keys %$q);
-foreach (keys %$q) {
-my $plugin_name_ok = $_;
-$plugin_name_ok =~ s/[^a-z0-9_]/_/gi;
-$spoolwriter->write($row->{timestamp}, $plugin_name_ok, $q->{$_}) ;
-}
-	}
-	INFO "Running munin-update for $hostname\n";
-	system("/opt/munin/lib/munin-update", "--config_file=$conf_file", "--host", "$hostname"); #, "--debug"
+
+    foreach (keys %$q) {
+    my $plugin_name_ok = $_;
+    $plugin_name_ok =~ s/[^a-z0-9_]/_/gi;
+    $spoolwriter->write($row->{timestamp}, $plugin_name_ok, $q->{$_}) ;
     }
-    copyOldFiles(2);
-# exit 1;
-}
+	    }
+	    INFO "Running munin-update for $hostname\n";
+	    system("/opt/munin/lib/munin-update", "--config_file=$conf_file", "--host", "$hostname"); #, "--debug"
+	}
+	copyOldFiles(2);
+    # exit 1;
+    }
     return EXIT_MUNIN_SUCCESS;
 }
 
