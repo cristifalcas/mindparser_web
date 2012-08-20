@@ -6,13 +6,13 @@ use strict;
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use DBI;
-use Log::Log4perl qw(:easy);
 
 use Mind_work::MindCommons;
 my ($db_database, $db_user, $db_pass, 
   $cust_table, $host_table, $collected_file_table, $md5_names_table, $stats_template_table, 
   $db_h);
 
+use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init({ level   => $INFO,
 #                            file    => ">>test.log" 
 			   layout   => "%d [%5p] (%6P) %m%n",
@@ -112,7 +112,7 @@ sub getCustomers {
 # start work if stats file done and no other stats pending. thread should be per host
 sub getWorkForMunin {
     my ($self, $status) = @_;
-return;
+
     my $hash = $db_h->selectall_hashref("select * from $collected_file_table where status=$status or status=0 and inserted_in_tablename is not null", ['host_id', 'inserted_in_tablename', 'status', 'id']);
     my ($ret, $checker);
     foreach my $h_id (keys %$hash){
@@ -124,18 +124,20 @@ return;
 		$checker->{$f_id} = $h_id;
 	    }
 	    return if defined $host_tables->{$table}->{0} || ! defined $host_tables->{$table}->{$status};
-	    $ret->{"$h_id:$table"} = [keys %$files_id];
+	    next if ! defined $db_h->selectrow_hashref("SELECT * FROM $host_table WHERE id=$h_id");
+	    $ret->{$h_id}->{$table} = [keys %$files_id];
 	}
     }
-print Dumper($ret);
+
     return $ret;
 }
 
 sub doneWorkForMunin {
     my ($self, $id, $new_status, $old_status) = @_;
     ## $id is like 1:rtsstatistics_alon'
-    my ($host_id, $stats_table) = $id =~ m/^(.+):(.+)$/;
-#     my $sth = $db_h->do("update $collected_file_table set status=$new_status WHERE host_id=$host_id and inserted_in_tablename='$stats_table' and status=$old_status") || die "Error $DBI::errstr\n";
+#     my ($host_id, $stats_table) = $id =~ m/^(.+):(.+)$/;
+print Dumper($id);exit 1;
+#     my $sth = $db_h->do("update $collected_file_table set status=$new_status WHERE host_id=$id and inserted_in_tablename='$stats_table' and status=$old_status") || die "Error $DBI::errstr\n";
 }
 
 sub getFilesForParsers {
@@ -167,19 +169,6 @@ sub insertFile() {
     $query_handle->execute() || die "Error $DBI::errstr\n" || die "Error $DBI::errstr\n";
 }
 
-sub get_md5_names {
-    my ($self, @arr) = @_;
-    my @res;
-    my $query = $db_h->prepare("SELECT * FROM $md5_names_table");
-    $query->execute() || die "Error $DBI::errstr\n";
-    my %hash = map{$_ => 1} @arr;
-    my $res;
-    while (my @row = $query->fetchrow_array){
-	$res->{$row[1]} = $row[0] if defined $hash{$row[1]};
-    }
-    return $res;
-} 
-
 sub get_customer_name {
     my ($self, $id) = @_;
     my $arr_ref = $db_h->selectrow_arrayref("select * from customers where id=$id");
@@ -192,24 +181,42 @@ sub get_host_name {
     return $arr_ref->[2];
 }
 
+sub get_md5_names {
+    my ($self, @arr) = @_;
+    my $existing = $db_h->selectall_hashref("select * from $md5_names_table", 'name');
+#     my $sha1_hash;
+#     $sha1_hash->{$_} = "x_".MindCommons::get_string_sha($_) foreach (@arr);
+
+    my $res;
+    foreach (@arr){
+	next if $_ eq 'id' || $_ eq 'file_id' || $_ eq 'timestamp';
+	die "ce ma fac cu $_?\n" if ! defined $existing->{$_};
+# 	$db_h->do("INSERT IGNORE INTO $md5_names_table (md5, name) VALUES ('$sha1_hash->{$_}', '$_')") || die "Error $DBI::errstr\n";
+	$res->{$_} = $existing->{$_}->{md5};
+    }
+    return $res;
+} 
+
 sub add_new_columns {
     my ($self, $table_name, $arr) = @_;
     DEBUG "Acquiring lock\n";
     $db_h->do("LOCK TABLES $table_name WRITE, $md5_names_table WRITE");
     my $sha1_hash;
     $sha1_hash->{"x_".MindCommons::get_string_sha($_)} = $_ foreach (@$arr);
-
-    my $md5_existing = $db_h->selectrow_arrayref("select * from $md5_names_table");
+    my $md5_existing = $db_h->selectall_hashref("select * from $md5_names_table", 'md5');
+    foreach (keys %$sha1_hash){
+	next if defined $md5_existing->{$_};
+	INFO "Adding new rows $sha1_hash->{$_} ($_) in $md5_names_table\n";
+	$db_h->do("INSERT IGNORE INTO $md5_names_table (md5, name) VALUES ('$_', '$sha1_hash->{$_}')");
+    }
     my $columns_e = getColumnList($self, $table_name);
-    my ($only_in_arr1, $only_in_arr2, $intersection) = MindCommons::array_diff( $md5_existing, $columns_e);
-print Dumper($only_in_arr1, $only_in_arr2, $intersection);exit 1;
     my $md5_columns = ['id', 'file_id', 'timestamp', keys %$sha1_hash];
-    ($only_in_arr1, $only_in_arr2, $intersection) = MindCommons::array_diff( $md5_columns, $columns_e);
+    my ($only_in_arr1, $only_in_arr2, $intersection) = MindCommons::array_diff( $md5_columns, $columns_e);
 
     while (my ($index, $sha1) = each @$only_in_arr1) {
 	INFO "Adding new column $sha1 ($sha1_hash->{$sha1}) for table $table_name\n";
 	$db_h->do("ALTER TABLE $table_name ADD $sha1 decimal(15,5)") || die "Error $DBI::errstr\n";
-	$db_h->do("INSERT IGNORE INTO $md5_names_table (md5, name) VALUES ('$sha1', '$arr->[$index]')") || die "Error $DBI::errstr\n";
+# 	$db_h->do("INSERT IGNORE INTO $md5_names_table (md5, name) VALUES ('$sha1', '$arr->[$index]')") || die "Error $DBI::errstr\n";
     }
     DEBUG "Releasing lock\n";
     $db_h->do("UNLOCK TABLES");

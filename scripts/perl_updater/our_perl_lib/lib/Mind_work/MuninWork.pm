@@ -13,6 +13,12 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use File::Path qw(make_path);
 
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init({ level   => $INFO,
+#                            file    => ">>test.log" 
+			   layout   => "%d [%5p] (%6P) %m%n",
+});
+
 use constant {
     EXIT_STATUS_NA	=>-1,
     EXIT_IGNORE		=> 0,
@@ -35,7 +41,7 @@ use Mind_work::MindCommons;
 my $config = MindCommons::xmlfile_to_hash("config.xml");
 my $db_h;
 my ($spoolwriter, $munin_dbdir, $intervalsize, $retaincount, $rate);
-my ($conf_file, $hostname, $work_dir, $customer, $host, $type, $stats_table);
+my ($conf_file, $hostname, $work_dir, $customer, $host, $plugins_conf_dir);
 
 # "$Munin::Common::Defaults::MUNIN_CONFDIR"
 # "$Munin::Common::Defaults::MUNIN_SPOOLDIR"
@@ -43,14 +49,16 @@ my ($conf_file, $hostname, $work_dir, $customer, $host, $type, $stats_table);
 
 sub writeConfFiles {
     ##fake dirs in file for real munin
-    open(MYOUTFILE, ">$Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$hostname") ||die "can't open file $Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$hostname: $!\n";
+    my $fake_dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/$hostname/";
+    open(MYOUTFILE, ">$Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$hostname") || LOGDIE "can't open file $Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$hostname: $!\n";
     print MYOUTFILE "[$hostname]
       update yes
-      address ssh://munin\@localhost /opt/munin/lib/munin-async --spoolfetch --spooldir $Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/$hostname/";
+      address ssh://munin\@localhost /opt/munin/lib/munin-async --spoolfetch --spooldir $fake_dir";
     close(MYOUTFILE);
+    if (! -d $fake_dir) {make_path $fake_dir or LOGDIE "can't make dir $fake_dir: $!\n";}
 
     ## real conf file for us
-    open(MYOUTFILE, ">$conf_file") ||die "can't open file $conf_file: $!\n";
+    open(MYOUTFILE, ">$conf_file") || LOGDIE "can't open file $conf_file: $!\n";
     print MYOUTFILE "rundir $work_dir
 dbdir $work_dir
 
@@ -66,7 +74,7 @@ sub setGlobalUpdateRate {
     use Fcntl;
     use DB_File;
     my %hash;
-    tie (%hash, 'DB_File', "$spool_dir/plugin_rates", O_RDWR|O_CREAT, 0666) or die "$!";
+    tie (%hash, 'DB_File', "$spool_dir/plugin_rates", O_RDWR|O_CREAT, 0666) or LOGDIE "$!";
     $hash{$plugin_name} = $rate;
     untie(%hash);
 }
@@ -79,20 +87,21 @@ sub initVars {
     $munin_dbdir = "$Munin::Common::Defaults::MUNIN_DBDIR";
     $intervalsize = 86400;
     $retaincount = 1;
-    $rate = 30;
+    $rate = 300;
 
-    ($host_id, $stats_table) = $host_id=~ m/^(.+):(.+)$/;
+#     ($host_id, $stats_table) = $host_id=~ m/^(.+):(.+)$/;
     $customer = getCustomerName($host_id);
     $host = getHostName($host_id);
     $hostname = "$host.$customer";
-    ($type) = $stats_table =~ m/^([^_]+)/;
+#     ($type) = $stats_table =~ m/^([^_]+)/;
 
     my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
     $work_dir = "$filetmp_dir/munin/$customer\_$host/";
     my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
-    my $munin_conf_dir = "$script_path/".$config->{dir_paths}->{munin_conf_dir_postfix};
 
-    make_path $work_dir || die "can't create spool dir $work_dir.\n";
+    $plugins_conf_dir = "$script_path/".$config->{dir_paths}->{plugins_conf_dir_postfix};
+
+    make_path $work_dir || LOGDIE "can't create spool dir $work_dir.\n";
     $spoolwriter = Munin::Node::SpoolWriter->new(
 	spooldir => $work_dir,
 	interval_size => $intervalsize,
@@ -101,7 +110,7 @@ sub initVars {
     );
     
     $conf_file = "$work_dir/$customer\_$host.conf";
-    return $host_id;
+#     return $host_id;
 }
 
 sub getCustomerName {
@@ -114,70 +123,142 @@ sub getHostName {
     return $db_h->selectrow_array("select name from hosts where id=$host_id");
 }
 
-sub getLastTimestamp{
-    my ($host, $customer) = @_;
-    use Storable;
-    my $state_file = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$hostname");
-    my $storable = eval { Storable::retrieve($state_file); };
-    return $storable->{spoolfetch};
-}
-
 sub getColumns {
+    my $table = shift;
     my ($sth, @columns);
-#     eval {
-    $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE 1=0");
+    $sth = $db_h->prepare("SELECT * FROM $table WHERE 1=0");
     $sth->execute;
     @columns = @{$sth->{NAME}}; # or NAME_lc if needed
     $sth->finish;
-#     };
-#     return 300 if $@;
+
     $sth = $db_h->prepare("SELECT * FROM $config->{db_config}->{md5_names_table} WHERE md5 in (". (join ",", map {$db_h->quote($_)} @columns).")");
-    $sth->execute() || die "Error $DBI::errstr\n";
+    $sth->execute() || LOGDIE "Error $DBI::errstr\n";
     return $sth->fetchall_hashref('md5');
 }
 
 sub copyOldFiles {
-    my $storable_name = shift;
+    my ($direction, $plugin_name) = @_;
+    use Storable;
+    my $storable = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$hostname");#"state-$customer-$host.$customer.storable";
+    my $last_timestamp = 0;
+    my ($name,$dir,$suffix) = fileparse($storable, qr/\.[^.]*/);
 
     use File::Path 'rmtree';
     use File::Copy;
     use File::Copy::Recursive qw(dircopy rcopy);
-    rmtree ($work_dir);
-    make_path $work_dir || die "can't create spool dir $work_dir.\n";
-    if (-f "$Munin::Common::Defaults::MUNIN_DBDIR/$storable_name" || 
-	    scalar (glob("$Munin::Common::Defaults::MUNIN_DBDIR/$customer/$host.$customer-*"))){
-	# the state- file first,  so we have the last timestamp
-	copy ("$Munin::Common::Defaults::MUNIN_DBDIR/$storable_name", "$work_dir/$storable_name") or die "can't get storable file: $!\n";
-	foreach (glob("$Munin::Common::Defaults::MUNIN_DBDIR/$customer/$host.$customer-*")){
-	    make_path "$work_dir/$customer" || die "can't create dir $work_dir/$customer.\n";
-	    copy ($_, "$work_dir/$customer/") or die "can't copy rrd file $_: $!\n";
-	};
+    if ($direction == 1) {
+	rmtree ($work_dir);
+	make_path $work_dir || LOGDIE "can't create spool dir $work_dir.\n";
+	if (-f $storable || scalar (glob("$munin_dbdir/$customer/$host.$customer-*"))){
+	    copy ($storable, "$work_dir/$name$suffix") or LOGDIE "can't get storable file: $!\n";
+	    foreach (glob("$munin_dbdir/$customer/$host.$customer-$plugin_name-*")){
+		my $timestamp = `rrdtool info $_` || LOGDIE "can't run rrdtool\n";
+		($timestamp) = grep {m/^last_update/} (split /\n/, $timestamp);
+		$timestamp =~ s/^last_update\s*=\s*//;
+		$last_timestamp = $timestamp+0 if $timestamp > $last_timestamp || $last_timestamp == 0;
+		DEBUG "Using timestamp $last_timestamp\n";
+		make_path "$work_dir/$customer" || LOGDIE "can't create dir $work_dir/$customer.\n";
+		copy ($_, "$work_dir/$customer/") or LOGDIE "can't copy rrd file $_: $!\n";
+	    };
+#     use Storable;
+#     my $state_file = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$hostname");
+#     my $storable = eval { Storable::retrieve($state_file); };
+#     return $storable->{spoolfetch};
+	    my $storable_hash = eval { Storable::retrieve("$work_dir/$name$suffix"); };
+#     my $last_timestamp = $storable->{spoolfetch}
+# print Dumper($storable_hash->{spoolfetch});
+	    $storable_hash->{spoolfetch} = $last_timestamp;
+# print Dumper($storable_hash->{spoolfetch});
+	    Storable::nstore($storable_hash, "$work_dir/$name$suffix");
+	}
+    } elsif ($direction == 2) {
+	dircopy("$work_dir/$customer", "$munin_dbdir/$customer") or LOGDIE "can't copy dir $work_dir/$customer: $!\n";
+	copy ("$work_dir/$name$suffix", $storable) or LOGDIE "can't copy storable file: $!\n";
+	if (-f "$work_dir/datafile") {
+	    open(FILE, "$work_dir/datafile") or LOGDIE "Can't open file for reading: $!\n";
+	    my @new_lines = <FILE>;
+	    close(FILE);
+
+	    open(FILE, ">>$munin_dbdir/datafile") or LOGDIE "Can't open file for writing: $!\n";
+	    print FILE "\n";
+	    foreach (@new_lines) {
+		print FILE $_;
+	    }
+	    close(FILE);
+	}
+    } else {
+	LOGDIE "unknown direction = $direction\n";
     }
+    return $last_timestamp ? $last_timestamp-$rate : $last_timestamp;
 }
 
 sub run {
-    my ($prev_dbh, $host_id, $files) = @_;
+    my ($prev_dbh, $host_id, $tables) = @_;
     $db_h = $prev_dbh->getDBI_handler();
-
-    $host_id = initVars($host_id);
-    my $colums_name = getColumns;
-    my $storable_name = "state-$customer-$host.$customer.storable";
+# print Dumper($host_id, $tables);return;
+    initVars($host_id);
+foreach my $stats_table (keys %$tables) {
+    INFO "Start updating $stats_table from host id=$host_id, name=$hostname\n";
+    my $colums_name = getColumns($stats_table);
+    my ($type) = $stats_table =~ m/^([^_]+)/;
     my $plugin_name = "test_$type\_$host\_$customer\_mind";  # MUST contain only 0-9a-z_
-    copyOldFiles($storable_name);
+    if (! -f "$plugins_conf_dir/$plugin_name.conf" || ! -s "$plugins_conf_dir/$plugin_name.conf") {
+	open(FILE, ">$plugins_conf_dir/$plugin_name.conf") or LOGDIE "Can't open file for writing: $!\n";
+	foreach (keys %$colums_name) {
+	    next if $colums_name->{$_}->{name} =~ m/^\s*Date\s*$/i || $colums_name->{$_}->{name} =~ m/^\s*Time\s*$/i;
+	    print FILE $colums_name->{$_}->{name}."\n";
+	}
+	close(FILE);
+# print Dumper(getColumns($stats_table));exit 1;
+    }
 
-    my $last_update = getLastTimestamp($host, $customer) || 
-	      ($db_h->selectrow_array("select min(timestamp) from $stats_table WHERE host_id=$host_id") || 0);
-    my $from_time = $last_update - $rate;
+    my $graph_name;
+    open(FILE, "$plugins_conf_dir/$plugin_name.conf") or LOGDIE "Can't open file for reading: $!\n";
+    my $section = "Other";
+    foreach my $name (<FILE>) {
+	$name =~ s/(\n*|\r*)//g;
+	if ($name =~ m/^\s*\[(.*?)\]\s*$/){
+	    $section = $1;
+	} else {
+	    $graph_name->{$name} = $section;
+	}
+    }
+    close(FILE);
+
+    my $from_time = copyOldFiles(1, $plugin_name);
+#  || ($db_h->selectrow_array("select min(timestamp) from $stats_table WHERE host_id=$host_id") || 0)
+
+#     $from_time = copyOldFiles(1, $plugin_name);
+
+#     my $last_update = getLastTimestamp || 
+# 	      ($db_h->selectrow_array("select min(timestamp) from $stats_table WHERE host_id=$host_id") || 0);
+#     my $from_time = $last_update - $rate;
     $db_h->{'mysql_use_result'} = 1;
-    my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time and file_id in (". (join ",", @$files).") order by timestamp");
-    $sth->execute() || die "Error $DBI::errstr\n";
+    $db_h->{'mysql_auto_reconnect'} = 1;
+
+    DEBUG "Getting lines from $stats_table with host_id=$host_id, timestamp=$from_time\n";
+    my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp");
+    $sth->execute() || LOGDIE "Error $DBI::errstr\n";
 
     my $first = 1;
     while (my $aref = $sth->fetchall_arrayref({}, 1000) ){
+	return EXIT_NO_ROWS if ! (scalar @$aref);
+	if ($first){
+	    writeConfFiles();
+	    $first = 0;
+# 		$spoolwriter->write($row->{timestamp}, $plugin_name, $output_rows);
+# 		my @files = glob("$work_dir/munin-daemon.$plugin_name.*");
+# 		LOGDIE "Too many files\n" if scalar @files != 1;
+# 		my $dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/$hostname/";
+# 		rmtree ($dir);
+# 		make_path $dir or LOGDIE "can't make dir $dir: $!\n";
+# 		move ($files[0], $dir) or LOGDIE "can't move file: $!\n";
+	}
 	unlink glob ("$work_dir/munin-daemon.$plugin_name.*");
+	DEBUG "got nr rows : ".(scalar @$aref)."\n";
 	foreach my $row (@$aref){
-	    my $output_rows = [
-		"graph_title $stats_table",
+	    my @output_rows = (
+# 		"graph_title $stats_table",
 # 		"graph_vlabel eceva pt vlabel",
 		"graph_scale no",
 		"graph_category $customer"."_$type",
@@ -185,39 +266,45 @@ sub run {
 		"update_rate $rate",
 		"graph_data_size custom 115200",
 # 		"hostname $hostname",
-		];
+		);
+my $q;
+# http://membersresource.dialogic.com/_releases/ss7/ProductSpecific/SS7G3x/Software/ss7g30-siu.tgz
+# cntms:module=mtp,imask=0xffffffff,omask=0xffffffff,mmask=0xffffffff,active=y;
+# cntms:module=isup,imask=0xffffffff,omask=0xffffffff,mmask=0xffffffff,active=y;
 	   foreach my $md5 (keys %$row) {
 		next if ! defined $row->{$md5} || $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i;
 		my $val = defined $row->{$md5} ? $row->{$md5} : "undef";
-		my $name = $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i ? $md5 : $colums_name->{$md5}->{name};
-		push $output_rows, (
+# 		my $name = $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i ? $md5 : $colums_name->{$md5}->{name};
+		my $name = $colums_name->{$md5}->{name};
+# print Dumper($graph_name,$name);
+# print "title is $graph_name->{$name}\n";
+push @{$q->{$graph_name->{$name}}}, (@output_rows, "graph_title $graph_name->{$name}") if ! defined $q->{$graph_name->{$name}};
+# print Dumper($q);exit 1;
+		push @{$q->{$graph_name->{$name}}}, (
+# 		    "multigraph $graph_name->{$name}",
 		    "$md5.label $name",
 		    "$md5.info $name",
 		    "$md5.value $val",
 		);
 	    }
-	    if ($first){
-		writeConfFiles();
-		$first = 0;
-		$spoolwriter->write($row->{timestamp}, $plugin_name, $output_rows);
-		my @files = glob("$work_dir/munin-daemon.$plugin_name.*");
-		die "Too many files\n" if scalar @files != 1;
-		my $dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/$hostname/";
-		rmtree ($dir);
-		make_path $dir or die "can't make dir $dir: $!\n";
-		move ($files[0], $dir) or die "can't move file: $!\n";
-	    }
-	    $spoolwriter->write($row->{timestamp}, $plugin_name, $output_rows);
+# print Dumper($q);exit 1;
+# print Dumper($q->{$_}) foreach (keys %$q);
+foreach (keys %$q) {
+my $plugin_name_ok = $_;
+$plugin_name_ok =~ s/[^a-z0-9_]/_/gi;
+$spoolwriter->write($row->{timestamp}, $plugin_name_ok, $q->{$_}) ;
+}
 	}
-	print "got nr rows : ".(scalar @$aref)."\n";
-	return EXIT_NO_ROWS if ! (scalar @$aref);
+	INFO "Running munin-update for $hostname\n";
 	system("/opt/munin/lib/munin-update", "--config_file=$conf_file", "--host", "$hostname"); #, "--debug"
     }
-    dircopy("$work_dir/$customer", "$Munin::Common::Defaults::MUNIN_DBDIR/$customer") or die "can't copy dir $work_dir/$customer: $!\n";
-    copy ("$work_dir/$storable_name", "$Munin::Common::Defaults::MUNIN_DBDIR/$storable_name") or die "can't copy storable file: $!\n";
+    copyOldFiles(2);
+# exit 1;
+}
     return EXIT_MUNIN_SUCCESS;
 }
 
+# http://munin-monitoring.org/wiki/MultigraphSampleOutput
 # http://munin-monitoring.org/wiki/protocol-config
 # http://munin-monitoring.org/wiki/format-graph_data_size
 # my $output_rows = [

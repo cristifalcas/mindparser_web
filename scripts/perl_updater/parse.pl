@@ -122,7 +122,7 @@ sub munin_update {
     my ($host_id, $files) = @_;
     use Mind_work::MuninWork;
     $0 = "munin_update_$0";
-    INFO "running munin ".Dumper($host_id);
+    INFO "running munin for host=$host_id\n";
     my $ret = MuninWork::run($dbh, $host_id, $files);
     return $ret;
 }
@@ -342,7 +342,7 @@ sub parse_statistics {
 
 	    my ($d, $m, $y) = split '/', $arr[0]; #21/07/12
 	    my ($h, $min, $s) = split ':', $arr[1]; #03:00:15
-	    my $timestamp = timegm($s,$min,$h,$d,$m-1,$y+2000);
+	    my $timestamp = timelocal($s,$min,$h,$d,$m-1,$y+2000); ## or timegm
 	    unshift @arr, $timestamp;
 	    if ($second) {  ## fix header 
 	      unshift @header, 'timestamp';
@@ -358,13 +358,14 @@ sub parse_statistics {
 		}
 	      }
 	      $header_hash = $dbh->get_md5_names(@header);
+# print Dumper("as",$header_hash,@header);
 	      $second = 0;
 	    }
 	    @arr = map{split /;/} @arr;
 	    my $new_vals;
 	    ## 1=timestamp, 2=date, 3=time
 	    for (my $i = 3; $i < scalar @header; $i++) {
-print Dumper($header_hash->{$header[$i]}, $header_hash, @header, $i);
+# print Dumper($header_hash->{$header[$i]}, $header_hash, @header, $i);
 		$columns .= ",$header_hash->{$header[$i]}" if $count == 2;
 		$new_vals .= ", $arr[$i]";
 	    }
