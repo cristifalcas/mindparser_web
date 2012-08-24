@@ -29,7 +29,7 @@ $body="";
 if (sizeof($selection) == 2){
     $customer = $selection[0];
     $host = $selection[1];
-    $url="";
+    $url="../cgi-bin/munin-cgi-html/$customer/index.html";
     $dir = "/uploads/$customer/$host/";
     $_SESSION['upload_dir'] = $dir;
     $_SESSION['customer'] = $customer;

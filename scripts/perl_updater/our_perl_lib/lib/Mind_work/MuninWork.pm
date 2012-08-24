@@ -1,8 +1,9 @@
 package MuninWork;
 ## needs from rc.local
 ## disable graph generation in  /opt/munin/bin/munin-cron
-# in munin-async I print "\n.\n" instead of ".\n" after "print $spoolreader->fetch($last_epoch);"
-# Also, in this case, I think that $correct variable should be initialized with 0 in Munin/Master/Node.pm at line 254
+# in /opt/munin/lib/munin-async I print "\n.\n" instead of ".\n" after "print $spoolreader->fetch($last_epoch);"
+# in /usr/local/share/perl5/Munin/Master/Node.pm at line 254 $correct variable should be initialized with 0
+# /usr/local/share/perl5/Munin/Master/ProcessManager.pm : accept_timeout  => 2,
 
 use warnings;
 use strict;
@@ -22,25 +23,29 @@ Log::Log4perl->easy_init({ level   => $INFO,
 use constant {
     EXIT_STATUS_NA	=>-1,
     EXIT_IGNORE		=> 0,
-    EXIT_STATS_SUCCESS	=> 1,
-    EXIT_MUNIN_SUCCESS	=> 2,
-    EXIT_PARSE_SUCCESS	=> 3,
     EXIT_STATS_EXPECTS	=> 0,
+    EXIT_STATS_SUCCESS	=> 1,
     EXIT_MUNIN_EXPECTS	=> 1,
+    EXIT_MUNIN_SUCCESS	=> 2,
+    EXIT_MUNIN_FINISH	=> 4,
     EXIT_PARSE_EXPECTS	=> 0,
+    EXIT_PARSE_SUCCESS	=> 3,
     EXIT_NO_FILE	=> 100,
     EXIT_WRONG_TYPE	=> 102,
     EXIT_NO_LINES	=> 110,
     EXIT_WRONG_MINE	=> 122,
     EXIT_EXTR_ERR	=> 150,
     EXIT_NO_ROWS	=> 200,
+    EXIT_NO_RRD		=> 210,
+    EXIT_MAIN_ERROR	=> 1000,
+    EXIT_MUNIN_ERROR	=> 130,
 };
 
 use Mind_work::SqlWork;
 use Mind_work::MindCommons;
 my $config = MindCommons::xmlfile_to_hash("config.xml");
 my $db_h;
-my ($spoolwriter, $munin_dbdir, $intervalsize, $retaincount, $rate);
+my ($spoolwriter, $munin_dbdir, $rate);
 my ($conf_file, $hostname, $work_dir, $customer, $host, $plugins_conf_dir);
 
 # "$Munin::Common::Defaults::MUNIN_CONFDIR"
@@ -69,15 +74,15 @@ dbdir $work_dir
     close(MYOUTFILE);
 }
 
-sub setGlobalUpdateRate {
-    my ($spool_dir, $plugin_name) = @_;
-    use Fcntl;
-    use DB_File;
-    my %hash;
-    tie (%hash, 'DB_File', "$spool_dir/plugin_rates", O_RDWR|O_CREAT, 0666) or LOGDIE "$!";
-    $hash{$plugin_name} = $rate;
-    untie(%hash);
-}
+# sub setGlobalUpdateRate {
+#     my ($spool_dir, $plugin_name) = @_;
+#     use Fcntl;
+#     use DB_File;
+#     my %hash;
+#     tie (%hash, 'DB_File', "$spool_dir/plugin_rates", O_RDWR|O_CREAT, 0666) or LOGDIE "$!";
+#     $hash{$plugin_name} = $rate;
+#     untie(%hash);
+# }
 
 sub initVars {
     my $host_id = shift;
@@ -85,8 +90,9 @@ sub initVars {
     use File::Basename;
 
     $munin_dbdir = "$Munin::Common::Defaults::MUNIN_DBDIR";
-    $intervalsize = 86400;
-    $retaincount = 1;
+    ## munin will not update previous day on day change at all otherwise
+    my $intervalsize = 86400 * 365;
+    my $retaincount = 1;
     $rate = 300;
 
     $customer = getCustomerName($host_id);
@@ -135,10 +141,10 @@ sub getColumns {
 
 sub copyOldFiles {
     my ($direction, $plugin_name) = @_;
-    use Storable;
-    my $storable = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$hostname");#"state-$customer-$host.$customer.storable";
+#     use Storable;
+#     my $storable = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$hostname");#"state-$customer-$host.$customer.storable";
     my $last_timestamp = 0;
-    my ($name,$dir,$suffix) = fileparse($storable, qr/\.[^.]*/);
+#     my ($name,$dir,$suffix) = fileparse($storable, qr/\.[^.]*/);
 
     use File::Path 'rmtree';
     use File::Copy;
@@ -146,24 +152,30 @@ sub copyOldFiles {
     if ($direction == 1) {
 	rmtree ($work_dir);
 	make_path $work_dir || LOGDIE "can't create spool dir $work_dir.\n";
-	if (-f $storable || scalar (glob("$munin_dbdir/$customer/$host.$customer-*"))){
-	    copy ($storable, "$work_dir/$name$suffix") or LOGDIE "can't get storable file: $!\n";
-	    foreach (glob("$munin_dbdir/$customer/$host.$customer-$plugin_name-*")){
-		my $timestamp = `rrdtool info $_` || LOGDIE "can't run rrdtool\n";
+# 	    symlink("$munin_dbdir/$customer/", "$work_dir/") or LOGDIE "can't symlink rrd dir: $!\n";
+	make_path "$munin_dbdir/$customer/" if ! -d "$munin_dbdir/$customer/";
+	system("ln", "-s", "$munin_dbdir/$customer/", "$work_dir/") == 0 || LOGDIE "can't symlink rrd dir: $!\n";
+# exit 1;
+	if (scalar (glob("$munin_dbdir/$customer/$host.$customer-$plugin_name*"))){ #-f $storable || 
+# 	    copy ($storable, "$work_dir/$name$suffix") or LOGDIE "can't get storable file: $!\n";
+# 	    make_path "$work_dir/$customer" || LOGDIE "can't create dir $work_dir/$customer.\n";
+	    foreach my $file (glob("$munin_dbdir/$customer/$host.$customer-$plugin_name*")){
+# 		my ($name,$dir,$suffix) = fileparse($file, qr/\.[^.]*/); 
+		my $timestamp = `rrdtool info $file` || LOGDIE "can't run rrdtool\n";
 		($timestamp) = grep {m/^last_update/} (split /\n/, $timestamp);
 		$timestamp =~ s/^last_update\s*=\s*//;
-		$last_timestamp = $timestamp+0 if $timestamp > $last_timestamp || $last_timestamp == 0;
+		$last_timestamp = $timestamp + 0 if $timestamp > $last_timestamp || $last_timestamp == 0;
 		DEBUG "Using timestamp $last_timestamp\n";
-		make_path "$work_dir/$customer" || LOGDIE "can't create dir $work_dir/$customer.\n";
-		copy ($_, "$work_dir/$customer/") or LOGDIE "can't copy rrd file $_: $!\n";
+# 		copy ($file, "$work_dir/$customer/") or LOGDIE "can't copy rrd file $file: $!\n";
+# 		symlink($file, "$work_dir/$customer/$name$suffix") or LOGDIE "can't symlink rrd file $file: $!\n";
 	    };
-	    my $storable_hash = eval { Storable::retrieve("$work_dir/$name$suffix"); };
-	    $storable_hash->{spoolfetch} = $last_timestamp;
-	    Storable::nstore($storable_hash, "$work_dir/$name$suffix");
+# 	    my $storable_hash = eval { Storable::retrieve("$work_dir/$name$suffix"); };
+# 	    $storable_hash->{spoolfetch} = $last_timestamp;
+# 	    Storable::nstore($storable_hash, "$work_dir/$name$suffix");
 	}
     } elsif ($direction == 2) {
-	dircopy("$work_dir/$customer", "$munin_dbdir/$customer") or LOGDIE "can't copy dir $work_dir/$customer: $!\n";
-	copy ("$work_dir/$name$suffix", $storable) or LOGDIE "can't copy storable file: $!\n";
+# 	dircopy("$work_dir/$customer", "$munin_dbdir/$customer") or LOGDIE "can't copy dir $work_dir/$customer: $!\n";
+# 	copy ("$work_dir/$name$suffix", $storable) or LOGDIE "can't copy storable file: $!\n";
 	if (-f "$work_dir/datafile") {
 	    open(FILE, "$work_dir/datafile") or LOGDIE "Can't open file for reading: $!\n";
 	    my @new_lines = <FILE>;
@@ -182,94 +194,159 @@ sub copyOldFiles {
     return $last_timestamp ? $last_timestamp-$rate : $last_timestamp;
 }
 
-sub run {
-    my ($prev_dbh, $host_id, $tables) = @_;
-    $db_h = $prev_dbh->getDBI_handler();
-    initVars($host_id);
-    foreach my $stats_table (keys %$tables) {
-	INFO "Start updating $stats_table from host id=$host_id, name=$hostname\n";
-	my $colums_name = getColumns($stats_table);
-	my ($type) = $stats_table =~ m/^([^_]+)/;
-	my $plugin_name = "test_$type\_$host\_$customer\_mind";  # MUST contain only 0-9a-z_
-	if (! -f "$plugins_conf_dir/$plugin_name.conf" || ! -s "$plugins_conf_dir/$plugin_name.conf") {
-	    open(FILE, ">$plugins_conf_dir/$plugin_name.conf") or LOGDIE "Can't open file for writing: $!\n";
-	    foreach (keys %$colums_name) {
-		next if $colums_name->{$_}->{name} =~ m/^\s*Date\s*$/i || $colums_name->{$_}->{name} =~ m/^\s*Time\s*$/i;
-		print FILE $colums_name->{$_}->{name}."\n";
-	    }
-	    close(FILE);
-	}
-
-	my $graph_name;
-	open(FILE, "$plugins_conf_dir/$plugin_name.conf") or LOGDIE "Can't open file for reading: $!\n";
-	my $section = "Other";
-	foreach my $name (<FILE>) {
-	    $name =~ s/(\n*|\r*)//g;
-	    if ($name =~ m/^\s*\[(.*?)\]\s*$/){
-		$section = $1;
-	    } else {
-		$graph_name->{$name} = $section;
-	    }
+sub configPlugins {
+    my ($type, $plugin_name, $colums_name) = @_;
+    my $plugin_conf_template = "$plugins_conf_dir/$type.conf";
+    if (! -f $plugin_conf_template || ! -s $plugin_conf_template) {
+	open(FILE, ">$plugin_conf_template") or LOGDIE "Can't open file for writing: $!\n";
+	foreach (keys %$colums_name) {
+	    next if $colums_name->{$_}->{name} =~ m/^\s*Date\s*$/i || $colums_name->{$_}->{name} =~ m/^\s*Time\s*$/i;
+	    print FILE $colums_name->{$_}->{name}."\n";
 	}
 	close(FILE);
+    }
 
+    my $plugin_conf_file = "$plugins_conf_dir/customers/$customer/$host/$plugin_name.conf";
+    if (! -f $plugin_conf_file) {
+	make_path "$plugins_conf_dir/customers/$customer/$host" || LOGDIE "can't create dir for plugin conf.\n";
+	copy ($plugin_conf_template, $plugin_conf_file) or LOGDIE "can't copy plugin conf file: $!\n";
+    }
+
+    my $graph_name;
+    open(FILE, $plugin_conf_file) or LOGDIE "Can't open file for reading: $!\n";
+    my $section = "Other";
+    my @extra_args;
+    foreach my $line (<FILE>) {
+	$line =~ s/(\n*|\r*)//g;
+	if ($line =~ m/^\s*\[(.*?)\]\s*$/){
+	    my $name = $1;
+	    @extra_args = ();
+	    if ($name =~ m/^\s*update_rate\s*=\s*([0-9]+)\s*$/i) {
+		$rate = $1 if defined $1 and $1 > 0;
+		INFO "Update rate changhed to $rate\n";
+	    } elsif ($name =~ m/:/) {
+		DEBUG "Found extra config.\n";
+		my @vars = split /:/, $name;
+		$section = shift @vars;
+		foreach (@vars) {
+		    DEBUG "Found config $_.\n";
+		    push @extra_args, $_;
+		}
+	    } else {
+		$section = $name;
+	    }
+	} else {
+	    $graph_name->{$line}->{section} = $section;
+	    push @{$graph_name->{$line}->{args}}, @extra_args if scalar @extra_args;
+	}
+    }
+    close(FILE);
+    return $graph_name;
+}
+
+sub connectDB {
+    $db_h = DBI->connect("DBI:mysql:$config->{db_config}->{db_database}", $config->{db_config}->{db_user}, $config->{db_config}->{db_pass},
+	{ ShowErrorStatement => 1,
+          AutoCommit => 1,
+          RaiseError => 1,
+          mysql_use_result => 1,
+          mysql_enable_utf8 => 1,
+	  mysql_auto_reconnect => 1,
+          PrintError => 1, }) || die "Could not connect to database: $DBI::errstr";
+    return $db_h;
+}
+
+sub run {
+    my ($prev_dbh, $host_id, $tables) = @_;
+    connectDB;
+
+    foreach my $stats_table (keys %$tables) {
+	initVars($host_id);
+	INFO "Start updating $stats_table from host id=$host_id, name=$hostname\n";
+# next if $stats_table =~ m/rts/i;
+	my $colums_name = getColumns($stats_table);
+	my ($type) = $stats_table =~ m/^([^_]+)/;
+# 	my $plugin_name = "test_$type\_$host\_$customer\_mind";  # MUST contain only 0-9a-z_
+	my $plugin_name = "$type";  # MUST contain only 0-9a-z_
+
+	my $graph_name = configPlugins($type, $plugin_name, $colums_name);
 	my $from_time = copyOldFiles(1, $plugin_name);
+	writeConfFiles();
 
-	$db_h->{'mysql_use_result'} = 1;
-	$db_h->{'mysql_auto_reconnect'} = 1;
 	DEBUG "Getting lines from $stats_table with host_id=$host_id, timestamp=$from_time\n";
+	my ($total_rows) = $db_h->selectrow_array("SELECT count(*) FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp asc");
 	my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp");
 	$sth->execute() || LOGDIE "Error $DBI::errstr\n";
 
-	my $first = 1;
-	while (my $aref = $sth->fetchall_arrayref({}, 1000) ){
+eval{
+	my $crt_rows = 0;
+	## on 3000 rows iostat can generate a 150MB file
+	while (my $aref = $sth->fetchall_arrayref({}, 3000) ){
 	    return EXIT_NO_ROWS if ! (scalar @$aref);
-	    if ($first){
-		writeConfFiles();
-		$first = 0;
-	    }
-	    unlink glob ("$work_dir/munin-daemon.$plugin_name.*");
-	    DEBUG "got nr rows : ".(scalar @$aref)."\n";
+	    unlink glob ("$work_dir/munin-daemon.$plugin_name*");
+	    $crt_rows += scalar @$aref;
+	    DEBUG "got nr rows : ".(scalar @$aref).". Total rows is $total_rows,current nr is $crt_rows.\n";
 	    foreach my $row (@$aref){
 		my @output_rows = (
     # 		"graph_title $stats_table",
     # 		"graph_vlabel eceva pt vlabel",
 		    "graph_scale no",
-		    "graph_category $customer"."_$type",
+		    "graph_category $type",
 		    "graph_info $stats_table",
 		    "update_rate $rate",
-		    "graph_data_size custom 115200",
+		    "graph_data_size custom 1y, 1h for 2y, 1d for 5y",
     # 		"hostname $hostname",
 		    );
-	    my $q;
+		my $q;
     # http://membersresource.dialogic.com/_releases/ss7/ProductSpecific/SS7G3x/Software/ss7g30-siu.tgz
     # cntms:module=mtp,imask=0xffffffff,omask=0xffffffff,mmask=0xffffffff,active=y;
     # cntms:module=isup,imask=0xffffffff,omask=0xffffffff,mmask=0xffffffff,active=y;
-	    foreach my $md5 (keys %$row) {
-		next if ! defined $row->{$md5} || $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i;
-		my $val = defined $row->{$md5} ? $row->{$md5} : "undef";
-# 		my $name = $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i ? $md5 : $colums_name->{$md5}->{name};
-		my $name = $colums_name->{$md5}->{name};
-		push @{$q->{$graph_name->{$name}}}, (@output_rows, "graph_title $graph_name->{$name}") if ! defined $q->{$graph_name->{$name}};
-		push @{$q->{$graph_name->{$name}}}, (
-# 		    "multigraph $graph_name->{$name}",
-		    "$md5.label $name",
-		    "$md5.info $name",
-		    "$md5.value $val",
-		);
-	    }
+# use Time::Local;
+# my @t = localtime(time);
+# my $gmt_offset_in_seconds = timegm(@t) - timelocal(@t);
+# print Dumper(localtime($row->{timestamp}),$row->{time})  && $row->{time} lt "0".($gmt_offset_in_seconds/3600).":05:00"
+# next if $row->{time} gt "0".($gmt_offset_in_seconds/3600-1).":55:59";
+		foreach my $md5 (keys %$row) {
+# print "$md5 = $row->{$md5}\n" if $md5 =~ m/Time/i;
+		    next if $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i || $colums_name->{$md5}->{name} =~ m/^(date|time)$/i;
+LOGDIE "flockers $md5:\n".Dumper($row) if ! defined $row->{$md5};
+    # 		my $name = $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i ? $md5 : $colums_name->{$md5}->{name};
+		    my $name = $colums_name->{$md5}->{name};
+		    my $val = $row->{$md5};
+		    my $section = $graph_name->{$name}->{section};
+		    if (! defined $q->{$section} ) {
+			push @{ $q->{$section} }, @{ $graph_name->{$name}->{args} } if defined $graph_name->{$name}->{args};
+			push @{ $q->{$section} }, (@output_rows, "graph_title $section");
+		    }
+		    push @{ $q->{$section} }, (
+    # 		    "multigraph $graph_name->{$name}",
+			"$md5.label $name",
+			"$md5.info $name",
+			"$md5.value $val",
+		    );
+		}
 
-    foreach (keys %$q) {
-    my $plugin_name_ok = $_;
-    $plugin_name_ok =~ s/[^a-z0-9_]/_/gi;
-    $spoolwriter->write($row->{timestamp}, $plugin_name_ok, $q->{$_}) ;
-    }
+		foreach (keys %$q) {
+		    my $plugin_name_ok = $_;
+		    $plugin_name_ok =~ s/[^a-z0-9_]/_/gi;
+# print "$row->{date} $row->{time} ".Dumper($q->{$_})."\n";
+		    my $q = $spoolwriter->write($row->{timestamp}, $plugin_name."_".$plugin_name_ok, $q->{$_}) ;
+# print Dumper($q);
+		}
 	    }
-	    INFO "Running munin-update for $hostname\n";
-	    system("/opt/munin/lib/munin-update", "--config_file=$conf_file", "--host", "$hostname"); #, "--debug"
+	    DEBUG "Running munin-update for $hostname in $stats_table\n";
+	    system("/opt/munin/lib/munin-update", "--config_file=$conf_file", "--host", "$hostname") == 0 or return EXIT_MUNIN_ERROR; #, "--debug"
+# 	    system("/opt/munin/lib/munin-limits"); #, "--debug"
+# 	    system("/opt/munin/lib/munin-html"); #, "--debug"
 	}
+};
+print Dumper($@) if $@;
+return EXIT_MUNIN_ERROR if $@;
 	copyOldFiles(2);
-    # exit 1;
+	rmtree ($work_dir);
+	system("/opt/munin/lib/munin-update") == 0 or return EXIT_MUNIN_ERROR;
+	system("/opt/munin/lib/munin-limits") == 0 or return EXIT_MUNIN_ERROR;
+	system("/opt/munin/lib/munin-html") == 0 or return EXIT_MUNIN_ERROR;
     }
     return EXIT_MUNIN_SUCCESS;
 }
