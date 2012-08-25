@@ -52,7 +52,7 @@ sub new {
     $stats_template_table = $config->{db_config}->{stats_template_table};
     
     my $self = { };
-    $db_h = DBI->connect("DBI:mysql:$db_database", $db_user, $db_pass,
+    $db_h = DBI->connect("DBI:mysql:$db_database:10.0.0.99:3306", $db_user, $db_pass,
 	{ ShowErrorStatement => 1,
           AutoCommit => 1,
           RaiseError => 1,
@@ -152,7 +152,9 @@ sub fixMissingRRDs {
 sub timeFromLastUpdate {
     my ($self, $status, $h_id) = @_;
     my ($last_time) = @{ $db_h->selectrow_arrayref("select max(parse_done_time) from $collected_file_table where status=$status and host_id=$h_id") };
-    LOGDIE "no parse_done_time for $collected_file_table\n" if ! defined $last_time;
+    LOGDIE "no parse_done_time for $collected_file_table (status=$status, host_id=$h_id)\n".
+	    Dumper($db_h->selectall_arrayref("select max(parse_done_time) from $collected_file_table where status=$status and host_id=$h_id")) 
+	if ! defined $last_time;
     my ($date_f, $hour_f) = split " ", $last_time;
     my ($hour, $min, $sec) = split ":", $hour_f;
     my ($year, $mon, $day) = split "-", $date_f;
@@ -161,7 +163,7 @@ sub timeFromLastUpdate {
     return (timegm(gmtime) - $unixtime > 3) ? 1 : 0;
 }
 
-# start work if stats file done and no other stats pending or no rrd files or files exist for processing. thread should be per host
+# start work if stats file done and no other stats pending or no rrd files or files exist for processing. thread should be per host+plugin
 sub getWorkForMunin {
     my ($self, $status) = @_;
 # print Dumper(getCustomers);
@@ -189,18 +191,11 @@ sub getWorkForMunin {
 	    foreach my $table (keys %$host_tables){
 		my $files_id = $host_tables->{$table}->{$status};
 		TRACE "Adding hostid=$h_id for munin work\n";
-		$ret->{$h_id}->{$table} = [keys %$files_id];
+		$ret->{$h_id."+".$table} = [keys %$files_id];
 	    }
 	}
     }
     return $ret;
-}
-
-sub doneWorkForMunin {
-    my ($self, $id, $new_status, $old_status) = @_;
-    DEBUG "Done munin: Updating all files from hostid=$id with status $new_status\n";
-    my $sth = $db_h->do("update $collected_file_table set status=$new_status WHERE status=$old_status and host_id=$id") || die "Error $DBI::errstr\n";
-    return $new_status;
 }
 
 sub getFilesForParsers {

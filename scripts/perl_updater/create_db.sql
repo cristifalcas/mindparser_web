@@ -1,6 +1,6 @@
 drop database mind_statistics;
 create database mind_statistics;
-grant index, create, select, insert, update, delete, drop, alter,  lock tables on  mind_statistics.* to 'mind_statistics'@'localhost' identified by '!0mind_statistics@9';
+grant index, create, select, insert, update, delete, drop, alter, lock tables on  mind_statistics.* to 'mind_statistics'@'%' identified by '!0mind_statistics@9';
 use mind_statistics;
 
 CREATE TABLE IF NOT EXISTS customers (

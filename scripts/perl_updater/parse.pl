@@ -1,4 +1,6 @@
 #!/usr/bin/perl -w
+# perl, munin (make perl-Module-Build)
+# perl-Linux-Inotify2 perl-Log-Log4perl perl-XML-Simple perl-Digest-SHA perl-File-Copy-Recursive perl-Archive-Extract perl-Archive-Zip perl-File-LibMagic perl-DBD-MySQ perl-IO-Socket-INET6
 my @crt_timeData = localtime(time);
 foreach (@crt_timeData) {$_ = "0$_" if($_<10);}
 print "Start: ". ($crt_timeData[5]+1900) ."-".($crt_timeData[4]+1)."-$crt_timeData[3] $crt_timeData[2]:$crt_timeData[1]:$crt_timeData[0].\n";
@@ -12,7 +14,7 @@ use File::Find;
 use File::Copy;
 use File::Path qw(make_path remove_tree);
 use File::Basename;
-use File::Slurp;
+# use File::Slurp;
 use Cwd 'abs_path';
 use Linux::Inotify2;
 use Time::Local;
@@ -20,7 +22,7 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use Time::HiRes qw( usleep tv_interval gettimeofday);
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init({ level   => $DEBUG,
+Log::Log4perl->easy_init({ level   => $INFO,
 #                            file    => ">>test.log" 
 			   layout   => "%d [%5p] (%6P) %m%n",
 });
@@ -55,6 +57,7 @@ use constant {
     EXIT_PARSE_SUCCESS	=> 3,
     EXIT_NO_FILE	=> 100,
     EXIT_WRONG_TYPE	=> 102,
+    EXIT_WRONG_NAME	=> 102,
     EXIT_NO_LINES	=> 110,
     EXIT_WRONG_MINE	=> 122,
     EXIT_EXTR_ERR	=> 150,
@@ -123,17 +126,17 @@ sub parser_finish {
 
 sub munin_getwork {
     my $ret = $dbh->getWorkForMunin(EXIT_STATS_SUCCESS);
-# print Dumper(keys %$ret) if defined $ret;
+# print Dumper(keys %$ret) if defined $ret;exit 1000;
     return $ret;
 }
 
-sub munin_update {
-    my ($host_id, $files) = @_;
+sub munin_work {
+    my $host_id = shift;
     use Mind_work::MuninWork;
-    $0 = "munin_update_$0";
+    $0 = "munin_work_$0";
     INFO "running munin for host=$host_id\n";
 # return;
-    my $ret = MuninWork::run($dbh, $host_id, $files);
+    my $ret = MuninWork::run($host_id);
 # print Dumper(keys %$ret) if defined $ret;
     return $ret;
 }
@@ -141,7 +144,7 @@ sub munin_update {
 sub munin_finish {
     my ($id, $ret) = @_;
     if ($ret == EXIT_MUNIN_SUCCESS) {
-	$ret = $dbh->doneWorkForMunin($id, $ret, EXIT_STATS_SUCCESS);
+	$ret = MuninWork::run($id, $ret, EXIT_STATS_SUCCESS);
     } else {
 	INFO "Munin did not finish succesfully: $ret\n";
     }
@@ -234,7 +237,7 @@ sub periodic_checks {
     };
 }
 
-sub get_table_name {
+sub find_table_name {
     my $name = shift;
     my ($table_name, $type, $app);
 
@@ -308,7 +311,7 @@ sub try_to_extract {
 	next if ! -f $_;
 	my ($name_e,$dir_e,$suffix_e) = fileparse($_, qr/\.[^.]*/);
 	my $new_name = "$dir/$name_e"."_".MindCommons::get_random."$suffix_e";
-	INFO "$thread_name Moving $_ to $new_name.\n";
+	DEBUG "$thread_name Moving $_ to $new_name.\n";
 	move("$_", $new_name);
     }
     remove_tree($tmp_dir);
@@ -326,7 +329,7 @@ sub parse_statistics {
     my $filename = $hash->{file_name};
     return EXIT_NO_FILE if (! -f $filename);
     my ($name, $dir, $suffix) = fileparse($filename, qr/\.[^.]*/);
-    my ($table_name, $app, $type) = get_table_name("$name$suffix");
+    my ($table_name, $app, $type) = find_table_name("$name$suffix");
     $table_name .= "_".lc($cust_name);
     $table_name = substr($table_name, 0, 64);  ## 64 is the max size of table name
     if (! defined $type || $type !~ m/statistics/i) {
@@ -416,7 +419,7 @@ sub parse_logs {
     my $host_name = $dbh->get_host_name($hash->{host_id});
     my $filename = $hash->{file_name};
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
-    my ($table_name, $app, $type) = get_table_name("$name$suffix");
+    my ($table_name, $app, $type) = find_table_name("$name$suffix");
     $table_name .= "_".lc($cust_name);
     $table_name = substr($table_name, 0, 64);  ## 64 is the max size of table name
     if (! defined $type || $type ne "info") {
@@ -446,9 +449,10 @@ sub insertFile {
 #     my $ret = ;
 # print Dumper($ret, EXIT_IGNORE);
     return EXIT_NO_FILE if ! -f $file || -d $file;
-    return if ( try_to_extract($file) != EXIT_IGNORE);
+    return if try_to_extract($file) != EXIT_IGNORE;
     my ($name,$dir,$suffix) = fileparse($file, qr/\.[^.]*/);
-    return EXIT_NO_FILE if "$name$suffix" =~ m/^\./;
+    return EXIT_WRONG_NAME if $name !~ m/^[a-z][a-z0-9_]*$/i;
+#     return EXIT_NO_FILE if "$name$suffix" =~ m/^\./;
     my ($cust_id, $host_id) = check_cust_host($file);
     INFO "Adding file $name$suffix ($cust_id, $host_id).\n";
     $dbh->insertFile ($cust_id, $host_id, $file, -s $file,  EXIT_STATS_EXPECTS);
@@ -468,7 +472,7 @@ sub main_process_worker {
     if (!$pid) {focker_launcher(\&parse_logs, \&parser_getwork, \&parser_finish, $threads_log); exit 0;};
     $forks->{$pid} = "logs";
     $pid = fork();
-    if (!$pid) {focker_launcher(\&munin_update, \&munin_getwork, \&munin_finish, $threads_munin); exit 0;};
+    if (!$pid) {focker_launcher(\&munin_work, \&munin_getwork, \&munin_finish, $threads_munin); exit 0;};
     $forks->{$pid} = "munin";
     $pid = fork();
     if (!$pid) {periodic_checks($forks, $main_pid); exit 0;};
