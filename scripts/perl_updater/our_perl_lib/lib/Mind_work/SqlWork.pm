@@ -29,7 +29,9 @@ use constant {
     EXIT_PARSE_EXPECTS	=> 0,
     EXIT_PARSE_SUCCESS	=> 3,
     EXIT_NO_FILE	=> 100,
+    EXIT_HOST_DELETE	=> 140,
     EXIT_WRONG_TYPE	=> 102,
+    EXIT_WRONG_NAME	=> 102,
     EXIT_NO_LINES	=> 110,
     EXIT_WRONG_MINE	=> 122,
     EXIT_EXTR_ERR	=> 150,
@@ -172,6 +174,7 @@ sub getWorkForMunin {
 
     use Time::Local;
     my $hash = $db_h->selectall_hashref("select * from $collected_file_table where status=$status", ['customer_id', 'host_id', 'inserted_in_tablename', 'status', 'id']); # and inserted_in_tablename is not null
+
     my $ret;
     foreach my $cust (keys %$hash){
 	my $all_hosts = $hash->{$cust};
@@ -179,13 +182,13 @@ sub getWorkForMunin {
 	foreach my $h_id (keys %$all_hosts){
 	    ## we have files not processed yet
 	    last if defined $db_h->selectrow_arrayref("select * from $collected_file_table where status=0 and host_id=$h_id");
-	    return if ! timeFromLastUpdate($self, $status, $h_id);
+	    next if ! timeFromLastUpdate($self, $status, $h_id);
 	    my $host_name = get_host_name($self, $h_id);
 	    ## host name not defined: was deleted. set all files as not collected, so the stats thread will updated them with error
 	    if (! defined $host_name) {
-		DEBUG "Updating all files from hostid=$h_id with status 0\n";
-		my $sth = $db_h->do("update $collected_file_table set status=0 WHERE host_id=$h_id") || die "Error $DBI::errstr\n";
-		return;
+		DEBUG "Updating all files from hostid=$h_id with status EXIT_HOST_DELETE\n";
+		my $sth = $db_h->do("update $collected_file_table set status=".EXIT_HOST_DELETE." WHERE host_id=$h_id") || die "Error $DBI::errstr\n";
+		next;
 	    }
 	    my $host_tables = $all_hosts->{$h_id};
 	    foreach my $table (keys %$host_tables){

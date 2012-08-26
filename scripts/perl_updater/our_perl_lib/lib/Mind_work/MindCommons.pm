@@ -7,6 +7,7 @@ use File::Path qw(make_path remove_tree);
 # use Digest::MD5 qw(md5_hex);
 # use File::Basename;
 # use File::Copy;
+use File::Find;
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 
@@ -35,69 +36,77 @@ sub hash_to_xmlfile {
 		    );
 }
 
-sub copy_dir {
-    my ($from_dir, $to_dir) = @_;
-    opendir my($dh), $from_dir or die "Could not open dir '$from_dir': $!";
-    for my $entry (readdir $dh) {
-#         next if $entry =~ /$regex/;
-        my $source = "$from_dir/$entry";
-        my $destination = "$to_dir/$entry";
-        if (-d $source) {
-	    next if $source =~ "\.?\.";
-            mkdir $destination or die "mkdir '$destination' failed: $!" if not -e $destination;
-            copy_dir($source, $destination);
-        } else {
-            copy($source, $destination) or die "copy failed: $source to $destination $!";
-        }
-    }
-    closedir $dh;
-    return;
+sub find_files_recursively {
+    my $path = shift;
+#     print "-Start searching for files in $path dir.\n";
+    my @files;
+    find(sub{push @files, $File::Find::name},$path);;
+    return @files;
 }
 
-sub move_dir {
-    my ($src, $trg) = @_;
-    die "\tTarget $trg is a file.\n" if (-f $trg);
-    makedir("$trg", 1) if (! -e $trg);
-    opendir(DIR, "$src") || die("Cannot open directory $src.\n");
-    my @files = grep { (!/^\.\.?$/) } readdir(DIR);
-    closedir(DIR);
-    foreach my $file (@files){
-	move("$src/$file", "$trg/$file") or die "Move file $src/$file to $trg failed: $!\n";
-    }
-    remove_tree("$src") || die "Can't remove dir $src.\n";
-}
+# sub copy_dir {
+#     my ($from_dir, $to_dir) = @_;
+#     opendir my($dh), $from_dir or die "Could not open dir '$from_dir': $!";
+#     for my $entry (readdir $dh) {
+# #         next if $entry =~ /$regex/;
+#         my $source = "$from_dir/$entry";
+#         my $destination = "$to_dir/$entry";
+#         if (-d $source) {
+# 	    next if $source =~ "\.?\.";
+#             mkdir $destination or die "mkdir '$destination' failed: $!" if not -e $destination;
+#             copy_dir($source, $destination);
+#         } else {
+#             copy($source, $destination) or die "copy failed: $source to $destination $!";
+#         }
+#     }
+#     closedir $dh;
+#     return;
+# }
+# 
+# sub move_dir {
+#     my ($src, $trg) = @_;
+#     die "\tTarget $trg is a file.\n" if (-f $trg);
+#     makedir("$trg", 1) if (! -e $trg);
+#     opendir(DIR, "$src") || die("Cannot open directory $src.\n");
+#     my @files = grep { (!/^\.\.?$/) } readdir(DIR);
+#     closedir(DIR);
+#     foreach my $file (@files){
+# 	move("$src/$file", "$trg/$file") or die "Move file $src/$file to $trg failed: $!\n";
+#     }
+#     remove_tree("$src") || die "Can't remove dir $src.\n";
+# }
 
-sub write_file {
-    my ($path,$text, $remove) = @_;
-    $remove = 0 if not defined $remove;
-    my ($name,$dir,$suffix) = fileparse($path, qr/\.[^.]*/);
-    add_to_remove("$dir/$name$suffix", "file") if $remove ne 0;
-    print "\tWriting file $name$suffix.\t". get_time_diff() ."\n";
-    open (FILE, ">$path") or die "at generic write can't open file $path for writing: $!\n";
-    ### don't decode/encode to utf8
-    print FILE "$text";
-    close (FILE);
-}
+# sub write_file {
+#     my ($path,$text, $remove) = @_;
+#     $remove = 0 if not defined $remove;
+#     my ($name,$dir,$suffix) = fileparse($path, qr/\.[^.]*/);
+#     add_to_remove("$dir/$name$suffix", "file") if $remove ne 0;
+#     print "\tWriting file $name$suffix.\t". get_time_diff() ."\n";
+#     open (FILE, ">$path") or die "at generic write can't open file $path for writing: $!\n";
+#     ### don't decode/encode to utf8
+#     print FILE "$text";
+#     close (FILE);
+# }
 
-sub makedir {
-    my ($dir, $no_extra) = @_;
-    my ($name_user, $pass_user, $uid_user, $gid_user, $quota_user, $comment_user, $gcos_user, $dir_user, $shell_user, $expire_user) = getpwnam scalar getpwuid $<;
-    my $err;
-    if (defined $no_extra) {
-	make_path ("$dir", {error => \$err});
-    } else {
-	make_path ("$dir", {owner=>"$name_user", group=>"nobody", error => \$err});
-    }
-    if (@$err) {
-	for my $diag (@$err) {
-	    my ($file, $message) = %$diag;
-	    if ($file eq '') { print "general error: $message.\n"; }
-	    else { print "problem unlinking $file: $message.\n"; }
-	}
-	die "Can't make dir $dir: $!.\n";
-    }
-    die "Dir not created.\n" if ! -d $dir;
-}
+# sub makedir {
+#     my ($dir, $no_extra) = @_;
+#     my ($name_user, $pass_user, $uid_user, $gid_user, $quota_user, $comment_user, $gcos_user, $dir_user, $shell_user, $expire_user) = getpwnam scalar getpwuid $<;
+#     my $err;
+#     if (defined $no_extra) {
+# 	make_path ("$dir", {error => \$err});
+#     } else {
+# 	make_path ("$dir", {owner=>"$name_user", group=>"nobody", error => \$err});
+#     }
+#     if (@$err) {
+# 	for my $diag (@$err) {
+# 	    my ($file, $message) = %$diag;
+# 	    if ($file eq '') { print "general error: $message.\n"; }
+# 	    else { print "problem unlinking $file: $message.\n"; }
+# 	}
+# 	die "Can't make dir $dir: $!.\n";
+#     }
+#     die "Dir not created.\n" if ! -d $dir;
+# }
 
 # sub normalize_text {
 #     my $str = shift;
@@ -173,21 +182,21 @@ sub get_string_sha {
     return sha1_hex($text);
 }
 
-sub capitalize_string {
-    my ($str,$type) = @_;
-    if ($type eq "first") {
-	$str =~ s/\b(\w)/\U$1/g;
-    } elsif ($type eq "all") {
-	$str =~ s/([\w']+)/\u\L$1/g;
-    } elsif ($type eq "small") {
-	$str =~ s/([\w']+)/\L$1/g;
-    } elsif ($type eq "onlyfirst") {
-	$str =~ s/\b(\w)/\U$1/;
-    } else {
-	die "Capitalization: first (first letter is capital and the rest remain the same), small (all letters to lowercase) or all (only first letter is capital, and the rest are lowercase).\n";
-    }
-    return $str;
-}
+# sub capitalize_string {
+#     my ($str,$type) = @_;
+#     if ($type eq "first") {
+# 	$str =~ s/\b(\w)/\U$1/g;
+#     } elsif ($type eq "all") {
+# 	$str =~ s/([\w']+)/\u\L$1/g;
+#     } elsif ($type eq "small") {
+# 	$str =~ s/([\w']+)/\L$1/g;
+#     } elsif ($type eq "onlyfirst") {
+# 	$str =~ s/\b(\w)/\U$1/;
+#     } else {
+# 	die "Capitalization: first (first letter is capital and the rest remain the same), small (all letters to lowercase) or all (only first letter is capital, and the rest are lowercase).\n";
+#     }
+#     return $str;
+# }
 
 sub array_diff {
     print "-Compute difference and uniqueness.\n" if $debug;

@@ -10,7 +10,6 @@ use strict;
 $| = 1;
 $SIG{__WARN__} = sub { die @_ };
 
-use File::Find;
 use File::Copy;
 use File::Path qw(make_path remove_tree);
 use File::Basename;
@@ -22,7 +21,7 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use Time::HiRes qw( usleep tv_interval gettimeofday);
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init({ level   => $INFO,
+Log::Log4perl->easy_init({ level   => $DEBUG,
 #                            file    => ">>test.log" 
 			   layout   => "%d [%5p] (%6P) %m%n",
 });
@@ -36,9 +35,7 @@ my $config = MindCommons::xmlfile_to_hash("config.xml");
 my $uploads_dir = $config->{dir_paths}->{uploads_dir};
 my $filedone_dir = $config->{dir_paths}->{filedone_dir};
 my $fileerr_dir = $config->{dir_paths}->{fileerr_dir};
-MindCommons::makedir($uploads_dir);
-MindCommons::makedir($filedone_dir);
-MindCommons::makedir($fileerr_dir);
+make_path($uploads_dir, $filedone_dir, $fileerr_dir);
 
 my $threads_stats = 10;
 my $threads_munin = 10;
@@ -56,6 +53,7 @@ use constant {
     EXIT_PARSE_EXPECTS	=> 0,
     EXIT_PARSE_SUCCESS	=> 3,
     EXIT_NO_FILE	=> 100,
+    EXIT_HOST_DELETE	=> 140,
     EXIT_WRONG_TYPE	=> 102,
     EXIT_WRONG_NAME	=> 102,
     EXIT_NO_LINES	=> 110,
@@ -115,7 +113,7 @@ sub parser_finish {
 	$host_name = "deleted" if ! defined $host_name;
 	$dir_prefix = "$filedone_dir/$cust_name/$host_name/";
     }
-    MindCommons::makedir($dir_prefix);
+    make_path($dir_prefix);
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
     my $new_name = "$dir_prefix/$name"."_".MindCommons::get_random."$suffix";
     DEBUG "Moving $filename to $new_name\n" if -f $filename;
@@ -133,8 +131,8 @@ sub munin_getwork {
 sub munin_work {
     my $host_id = shift;
     use Mind_work::MuninWork;
-    $0 = "munin_work_$0";
-    INFO "running munin for host=$host_id\n";
+    $0 = "munin_work_$host_id";
+#     INFO "running munin for host=$host_id\n";
 # return;
     my $ret = MuninWork::run($host_id);
 # print Dumper(keys %$ret) if defined $ret;
@@ -144,11 +142,12 @@ sub munin_work {
 sub munin_finish {
     my ($id, $ret) = @_;
     if ($ret == EXIT_MUNIN_SUCCESS) {
-	$ret = MuninWork::run($id, $ret, EXIT_STATS_SUCCESS);
+	$ret = MuninWork::finishedWork($id, $ret, EXIT_STATS_SUCCESS);
+	return EXIT_MUNIN_FINISH;
     } else {
 	INFO "Munin did not finish succesfully: $ret\n";
+	return EXIT_MUNIN_ERROR;
     }
-    return EXIT_MUNIN_FINISH;
 }
 
 sub focker_launcher {
@@ -167,8 +166,8 @@ sub focker_launcher {
 	foreach (keys %$data) {
 	    delete $data->{$_} if defined $running->{0}->{$_};
 	}
-# print Dumper($running);
 	my $id = (keys %$data)[0]; ## first element 
+# print Dumper($running, $id);
 	if ((scalar keys %$running) <= $max_procs && defined $id && (! defined $running->{0}->{$id})){
 	    $running->{0}->{$id} = 1;
 	    my $crt = shift @thread;  # get a number
@@ -261,7 +260,7 @@ sub try_to_extract {
     my $mime_type = $flm->checktype_filename($filename);
 
     my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
-    MindCommons::makedir($filetmp_dir);
+    make_path($filetmp_dir);
 
     DEBUG "Trying to extract $name$suffix\n";
     if ($mime_type eq 'text/plain; charset=us-ascii') {
@@ -270,6 +269,7 @@ sub try_to_extract {
 	  move($filename, "$dir/$name$suffix\_".MindCommons::get_random.".log");
 	  return EXIT_NO_FILE; ## file is gone now
       }
+      DEBUG "Extract has nothing to do with file $name$suffix.\n";
       return EXIT_IGNORE;
     } elsif ($mime_type eq 'application/zip; charset=binary') {
 	if ($suffix ne ".zip") {
@@ -299,7 +299,7 @@ sub try_to_extract {
     }
     my $ae = Archive::Extract->new( archive => $filename );
     my $tmp_dir = "$filetmp_dir/".MindCommons::get_random;
-    MindCommons::makedir($tmp_dir);
+    make_path($tmp_dir);
     DEBUG "Extracting in $thread_name file $filename to $tmp_dir\n";
     eval {$ae->extract( to => $tmp_dir ) or LOGDIE  $ae->error;};
     if ($@) {;
@@ -307,7 +307,7 @@ sub try_to_extract {
 	return EXIT_EXTR_ERR;
     }
     DEBUG "Extracted in $thread_name files from $filename to $tmp_dir:\n".Dumper($ae->files);
-    foreach (find_files_recursively($tmp_dir)){
+    foreach (MindCommons::find_files_recursively($tmp_dir)){
 	next if ! -f $_;
 	my ($name_e,$dir_e,$suffix_e) = fileparse($_, qr/\.[^.]*/);
 	my $new_name = "$dir/$name_e"."_".MindCommons::get_random."$suffix_e";
@@ -333,7 +333,7 @@ sub parse_statistics {
     $table_name .= "_".lc($cust_name);
     $table_name = substr($table_name, 0, 64);  ## 64 is the max size of table name
     if (! defined $type || $type !~ m/statistics/i) {
-	DEBUG "Probably not for $0: $name$suffix from $cust_name, machine $host_name: ".Dumper("$name$suffix",$table_name, $app, $type);
+	DEBUG "Probably not for $0: $name$suffix from $cust_name, machine $host_name\n";
 	return EXIT_IGNORE;
     }
     INFO "Parsing $0 file $name$suffix (id=$fileid) as $table_name from $cust_name, machine $host_name.\n";
@@ -447,11 +447,11 @@ sub check_cust_host {
 sub insertFile {
     my $file = shift;
 #     my $ret = ;
-# print Dumper($ret, EXIT_IGNORE);
     return EXIT_NO_FILE if ! -f $file || -d $file;
     return if try_to_extract($file) != EXIT_IGNORE;
     my ($name,$dir,$suffix) = fileparse($file, qr/\.[^.]*/);
-    return EXIT_WRONG_NAME if $name !~ m/^[a-z][a-z0-9_]*$/i;
+    return EXIT_WRONG_NAME if $name !~ m/^[a-z][a-z0-9_\.-]*$/i;
+# print Dumper($name);
 #     return EXIT_NO_FILE if "$name$suffix" =~ m/^\./;
     my ($cust_id, $host_id) = check_cust_host($file);
     INFO "Adding file $name$suffix ($cust_id, $host_id).\n";
@@ -481,7 +481,7 @@ sub main_process_worker {
 
     $dbh = new SqlWork();
     assign_watchers($uploads_dir);
-    insertFile ($_) foreach (find_files_recursively($uploads_dir));
+    insertFile ($_) foreach (MindCommons::find_files_recursively($uploads_dir));
 
     while (1) {
 	my @events = $inotify->read;
@@ -516,13 +516,6 @@ sub main_process_worker {
     INFO "FIN main *******************.\n";
 }
 
-sub find_files_recursively {
-    my $path = shift;
-    my @files;
-    find(sub{push @files, $File::Find::name},$path);;
-    return @files;
-}
-
 sub watch_handler {
     my $e = shift;
     assign_watchers($e->fullname) if (-d $e->fullname);
@@ -530,7 +523,7 @@ sub watch_handler {
 
 sub assign_watchers {
     my $path = shift;
-    my @files = find_files_recursively($path);
+    my @files = MindCommons::find_files_recursively($path);
     foreach my $file (@files){
 	if (-d $file && ! defined $watched_folders->{$file}) {
 	    INFO "Watching new dir $file.\n";
@@ -558,10 +551,6 @@ sub add_document{
 	print "$file\n";
 	parse_file(\@text);
 }
-
-print "-Start searching for files in $path_files dir.\n";
-find sub { add_document ($File::Find::name) if -f && (/\.*$/i) }, $path_files if  (-d $path_files);
-#print "+Done searching for files in $path_files dir:".(length($text)).".\n";
 
 sub parse_file_mind {
 	my $text = shift;
