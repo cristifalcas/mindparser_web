@@ -170,6 +170,7 @@ sub find_files_recursively {
 
 sub get_file_sha {
     my $doc_file = shift;
+    die "Not a file: $doc_file\n" if ! -f $doc_file;
     use Digest::SHA qw(sha1_hex);
     my $sha = Digest::SHA->new();
     $sha->addfile($doc_file);

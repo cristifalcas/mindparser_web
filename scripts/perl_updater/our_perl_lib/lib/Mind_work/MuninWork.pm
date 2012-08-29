@@ -7,6 +7,7 @@ package MuninWork;
 
 use warnings;
 use strict;
+$| = 1;
 
 use Munin::Node::SpoolWriter;
 use Munin::Common::Defaults;
@@ -17,40 +18,15 @@ use File::Path 'rmtree';
 use File::Copy;
 
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init({ level   => $INFO,
-#                            file    => ">>test.log" 
-			   layout   => "%d [%5p] (%6P) %m%n",
-});
-
-use constant {
-    EXIT_STATUS_NA	=>-1,
-    EXIT_IGNORE		=> 0,
-    EXIT_STATS_EXPECTS	=> 0,
-    EXIT_STATS_SUCCESS	=> 1,
-    EXIT_MUNIN_EXPECTS	=> 1,
-    EXIT_MUNIN_SUCCESS	=> 2,
-    EXIT_MUNIN_FINISH	=> 4,
-    EXIT_PARSE_EXPECTS	=> 0,
-    EXIT_PARSE_SUCCESS	=> 3,
-    EXIT_NO_FILE	=> 100,
-    EXIT_HOST_DELETE	=> 140,
-    EXIT_WRONG_TYPE	=> 102,
-    EXIT_WRONG_NAME	=> 102,
-    EXIT_NO_LINES	=> 110,
-    EXIT_WRONG_MINE	=> 122,
-    EXIT_EXTR_ERR	=> 150,
-    EXIT_NO_ROWS	=> 200,
-    EXIT_NO_RRD		=> 210,
-    EXIT_MAIN_ERROR	=> 1000,
-    EXIT_MUNIN_ERROR	=> 130,
-};
+use Definitions ':all';
 
 use Mind_work::SqlWork;
 use Mind_work::MindCommons;
 my $config = MindCommons::xmlfile_to_hash("config.xml");
 my $db_h;
 my ($spoolwriter, $munin_dbdir, $munin_db_fake_dir, $rate);
-my ($conf_file, $hostname, $work_dir, $customer, $host, $plugins_conf_dir);
+my ($conf_file, $full_hostname, $work_dir, $customer, $host, $plugins_conf_dir);
+my ($host_id, $stats_table, $plugin_name);
 
 # "$Munin::Common::Defaults::MUNIN_CONFDIR"
 # "$Munin::Common::Defaults::MUNIN_SPOOLDIR"
@@ -58,8 +34,8 @@ my ($conf_file, $hostname, $work_dir, $customer, $host, $plugins_conf_dir);
 
 sub writeConfFiles {
     ##fake dirs in file for real munin
-    open(MYOUTFILE, ">$Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$hostname") || LOGDIE "can't open file $Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$hostname: $!\n";
-    print MYOUTFILE "[$hostname]
+    open(MYOUTFILE, ">$Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$full_hostname") || LOGDIE "can't open file $Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$full_hostname: $!\n";
+    print MYOUTFILE "[$full_hostname]
       update yes
       address ssh://munin\@localhost /opt/munin/lib/munin-async --spoolfetch --spooldir $munin_db_fake_dir\n";
     close(MYOUTFILE);
@@ -70,26 +46,21 @@ sub writeConfFiles {
     print MYOUTFILE "rundir $work_dir
 dbdir $work_dir
 
-[$hostname]
+[$full_hostname]
       update yes
       address ssh://munin\@localhost /opt/munin/lib/munin-async --spoolfetch --spooldir $work_dir --cleanup\n";
     close(MYOUTFILE);
 }
 
-# sub setGlobalUpdateRate {
-#     my ($spool_dir, $plugin_name) = @_;
-#     use Fcntl;
-#     use DB_File;
-#     my %hash;
-#     tie (%hash, 'DB_File', "$spool_dir/plugin_rates", O_RDWR|O_CREAT, 0666) or LOGDIE "$!";
-#     $hash{$plugin_name} = $rate;
-#     untie(%hash);
-# }
-
 sub initVars {
-    my ($host_id, $plugin_name) = @_;
+    my $input = shift;
     use Cwd 'abs_path';
     use File::Basename;
+
+    ($host_id, $stats_table, $plugin_name, my $customer_guess) = $input =~ m/^(.*)?\+((.*)?statistics?_(.*))$/;
+    $customer = getCustomerName($host_id);
+    $host = getHostName($host_id);
+    LOGDIE "$input - strange customers: $customer_guess <> $customer\n" if lc($customer_guess) ne lc($customer);
 
     $munin_dbdir = "$Munin::Common::Defaults::MUNIN_DBDIR";
     ## munin will not update previous day on day change at all otherwise
@@ -97,10 +68,8 @@ sub initVars {
     my $retaincount = 365;
     $rate = 300;
 
-    $customer = getCustomerName($host_id);
-    $host = getHostName($host_id);
-    $hostname = "$host.$customer";
-    $munin_db_fake_dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/$hostname/";
+    $full_hostname = "$host.$customer";
+    $munin_db_fake_dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/$full_hostname/";
 
     my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
     $work_dir = "$filetmp_dir/munin/$customer\_$host\_$plugin_name/";
@@ -113,7 +82,7 @@ sub initVars {
 	spooldir => $work_dir,
 	interval_size => $intervalsize,
 	interval_keep => $retaincount,
-	hostname  => $hostname,
+	hostname  => $full_hostname,
     );
     
     $conf_file = "$work_dir/$customer\_$host.conf";
@@ -143,7 +112,7 @@ sub getColumns {
 }
 
 sub copyOldFiles {
-    my $plugin_name = shift;
+#     my $plugin_name = shift;
 #     use Storable;
 #     my $storable = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$hostname");#"state-$customer-$host.$customer.storable";
     my $last_timestamp = 0;
@@ -165,7 +134,7 @@ sub copyOldFiles {
 		($timestamp) = grep {m/^last_update/} (split /\n/, $timestamp);
 		$timestamp =~ s/^last_update\s*=\s*//;
 		$last_timestamp = $timestamp + 0 if $timestamp > $last_timestamp || $last_timestamp == 0;
-		DEBUG "Using timestamp $last_timestamp\n";
+		DEBUG "Using timestamp $last_timestamp from $file\n";
 # 		copy ($file, "$work_dir/$customer/") or LOGDIE "can't copy rrd file $file: $!\n";
 # 		symlink($file, "$work_dir/$customer/$name$suffix") or LOGDIE "can't symlink rrd file $file: $!\n";
 	    };
@@ -196,7 +165,7 @@ sub copyOldFiles {
 }
 
 sub configPlugins {
-    my ($plugin_name, $colums_name) = @_;
+    my $colums_name = shift;
     my $plugin_conf_template = "$plugins_conf_dir/$plugin_name.conf";
     if (! -f $plugin_conf_template || ! -s $plugin_conf_template) {
 	open(FILE, ">$plugin_conf_template") or LOGDIE "Can't open file $plugin_conf_template for writing: $!\n";
@@ -257,151 +226,109 @@ sub connectDB {
     return $db_h;
 }
 
-sub fixInput{
-    my $input = shift;
-    my ($host_id, $stats_table, $plugin_name, $customer_guess) = $input =~ m/^(.*)?\+((.*)?statistics?_(.*))$/;
-    return ($host_id, $stats_table, $plugin_name, $customer_guess);
-}
-
 sub run {
     my $input = shift;
-    # $plugin_name MUST contain only 0-9a-z_
-my ($host_id, $stats_table, $plugin_name, $customer_guess) = fixInput($input);
-# print Dumper("orig=".$input,"host=".$host_id,"cust=".$customer_guess,"plugin=".$plugin_name,"table=".$stats_table);exit 1000;
-# my $stats_table = $plugin_name."statistics_".$customer_guess;
-# my $not_done = 1;
-# while ($not_done){
+#     INFO "$input - Start munin work using table $stats_table with host id=$host_id, name=$full_hostname\n";
+
     connectDB;
-#     foreach my $stats_table (keys %$tables) {
-	initVars($host_id, $plugin_name);
-	LOGDIE "$input - strange customers: $customer_guess $customer\n" if lc($customer_guess) ne lc($customer);
-	INFO "$input - Start munin work using table $stats_table with host id=$host_id, name=$hostname\n";
-# print Dumper($host_id, $stats_table, $customer_guess, $plugin_name);exit 1000;
-# next if $stats_table =~ m/rts/i;
-	my $colums_name = getColumns($stats_table);
-# 	print Dumper(scalar (keys %$colums_name));exit 1000;
-# 	my ($plugin_name) = $stats_table =~ m/^([^_]+)/;
-# 	my $plugin_name = "test_$type\_$host\_$customer\_mind";  # MUST contain only 0-9a-z_
-# 	my $plugin_name = "$type";  # MUST contain only 0-9a-z_
+    initVars($input);
+    my $colums_name = getColumns($stats_table);
+    my $batch_nr_rows = sprintf("%.0f", 20000/(scalar (keys %$colums_name)))+2;
+    DEBUG "$input - Retrieving rows in batches of $batch_nr_rows\n";
+    my $graph_name = configPlugins($colums_name);
+    my $from_time = copyOldFiles;
+    writeConfFiles();
+    INFO "$input - Start time is $from_time\n";
 
-	my $graph_name = configPlugins($plugin_name, $colums_name);
-	my $from_time = copyOldFiles($plugin_name);
-	INFO "$input - Start time is $from_time\n";
-# 	exit 1000;
-	writeConfFiles();
+    my ($total_rows) = $db_h->selectrow_array("SELECT count(*) FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp asc");
+    DEBUG "$input - Getting all lines from $stats_table with host $host, timestamp=$from_time ($total_rows)\n";
+    my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>? order by timestamp limit ?");
+    $sth->execute(($from_time,$from_time ? $batch_nr_rows : 1)) || LOGDIE "Error $DBI::errstr\n";
 
-	DEBUG "$input - Getting lines from $stats_table with host_id=$host_id, timestamp=$from_time\n";
-	my ($total_rows) = $db_h->selectrow_array("SELECT count(*) FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp asc");
-	my $batch_nr_rows = sprintf("%.0f", 30000/(scalar (keys %$colums_name)))+2;
-	my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>? order by timestamp limit $batch_nr_rows");
-# 	print Dumper($sth->{NUM_OF_FIELDS});
-	$sth->execute(($from_time)) || LOGDIE "Error $DBI::errstr\n";
-# 	print Dumper($sth->{NUM_OF_FIELDS});
-
-	my $crt_rows = 0;
-	
-
-
-	DEBUG "$input - Retrieving rows in batches of $batch_nr_rows\n";
-# eval{
-	while (my $aref = $sth->fetchall_arrayref({}) ){
-	    LOGDIE "No rows\n" if ! (scalar @$aref);
-	    unlink glob ("$work_dir/munin-daemon.$plugin_name*");
-    
-	    DEBUG "$input - got nr rows : ".(scalar @$aref).".\n";
-	    foreach my $row (@$aref){
-		my @output_rows = (
-    # 		"graph_title $stats_table",
-    # 		"graph_vlabel eceva pt vlabel",
-		    "graph_scale no",
-		    "graph_category $plugin_name",
-		    "graph_info $stats_table",
-		    "update_rate $rate",
-		    "graph_data_size custom 1y, 1h for 2y, 1d for 5y",
-    # 		"hostname $hostname",
-		    );
-		my $q;
-#     print Dumper($row);
-		foreach my $md5 (keys %$row) {
-		    next if $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i || $colums_name->{$md5}->{name} =~ m/^(date|time|DBQueues)$/i;
-# LOGDIE "flockers $md5:\n".Dumper($row) if ! defined $row->{$md5};
-		    next if ! defined $row->{$md5};
-		    my $name = $colums_name->{$md5}->{name};
-		    my $val = $row->{$md5};
-		    my $section = $graph_name->{$name}->{section};
-		    if (! defined $q->{$section} ) {
-			push @{ $q->{$section} }, @{ $graph_name->{$name}->{args} } if defined $graph_name->{$name}->{args};
-			push @{ $q->{$section} }, (@output_rows, "graph_title $section");
-		    }
-		    push @{ $q->{$section} }, (
-    # 		    "multigraph $graph_name->{$name}",
-			"$md5.label $name",
-			"$md5.info $name",
-			"$md5.value $val",
-		    );
+    my $crt_rows = 0;
+    while (my $aref = $sth->fetchall_arrayref({}) ){
+# my $q = $from_time - ($from_time % $rate);
+# print "$q, $from_time\n" if $q-$from_time !=0;
+# die "times: $q vs $from_time\n" if $q<=$from_time;
+	last if ! (scalar @$aref);
+	unlink glob ("$work_dir/munin-daemon.$plugin_name*");
+# Alon;RTS2.Alon:asc_Memory.CDEF wrongdata=allusers,UN,INF,UNKN,IF
+	DEBUG "$input - got nr rows : ".(scalar @$aref).".\n";
+	foreach my $row (@$aref){
+	    my @output_rows = (
+# 		"graph_title $stats_table",
+# 		"graph_vlabel eceva pt vlabel",
+		"graph_scale no",
+		"graph_category $plugin_name",
+		"graph_info $stats_table",
+		"update_rate $rate",
+		"graph_data_size custom 1y, 1h for 2y, 1d for 5y",
+# 		"hostname $hostname",
+		);
+	    my $q;
+	    my $all_md5_per_section;
+	    foreach my $md5 (keys %$row) {
+		next if $md5 =~ m/^(id|host_id|file_id|timestamp|date|time)$/i || $colums_name->{$md5}->{name} =~ m/^(date|time|DBQueues)$/i;
+		next if ! defined $row->{$md5};
+		my $name = $colums_name->{$md5}->{name};
+		my $val = $row->{$md5};
+		my $section = $graph_name->{$name}->{section};
+		if (! defined $q->{$section} ) {
+		    push @{ $q->{$section} }, @{ $graph_name->{$name}->{args} } if defined $graph_name->{$name}->{args};
+		    push @{ $q->{$section} }, (@output_rows, "graph_title $section");
 		}
+		push @{ $all_md5_per_section->{$section} }, ($md5);
+		push @{ $q->{$section} }, (
+# 		    "multigraph $graph_name->{$name}",
+		    "$md5.label $name",
+		    "$md5.info $name",
+		    "$md5.value $val",
+		);
+	    }
 
-		foreach my $key (keys %$q) {
-		    my $plugin_name_ok = $key;
-		    $plugin_name_ok =~ s/[^a-z0-9_]/_/gi;
-# print "$row->{date} $row->{time} ".Dumper($q->{$_})."\n";
-# print Dumper($q->{$key}, $plugin_name."_".$plugin_name_ok, $q);
-		    my $q = $spoolwriter->write($row->{timestamp}, $plugin_name."_".$plugin_name_ok, $q->{$key}) ;
+	    foreach my $key (keys %$q) {
+		my $wrong_data;
+		if (scalar @{$all_md5_per_section->{$key}} > 1){
+		    $wrong_data= "wrongdata_all.cdef ".(join ",", @{$all_md5_per_section->{$key}}).(",+" x scalar @{$all_md5_per_section->{$key}}-1);
+		} else {
+		    $wrong_data= "wrongdata_all.cdef ".(shift @{$all_md5_per_section->{$key}});
 		}
-		$from_time = $row->{timestamp};
-		
+		push @{ $q->{$key} }, (
+		    "wrongdata_all.graph no",
+		    "wrongdata_all.label wrongdata_all",
+		    $wrong_data,
+		    "wrongdata.cdef wrongdata_all,UN,INF,UNKN,IF", #".(shift @{$all_md5_per_section->{$key}})."
+		    "wrongdata.draw AREA",
+		    "wrongdata.colour DEDEDE",
+		    "wrongdata.label Missing data",
+		);
+
+		my $plugin_name_ok = $key;
+		$plugin_name_ok =~ s/[^a-z0-9_]/_/gi;
+		my $q = $spoolwriter->write($row->{timestamp}, $plugin_name."_".$plugin_name_ok, $q->{$key}) ;
 	    }
-# 	    if ($crt_rows%(300*20))
-	    DEBUG "$input - Running munin-update for $hostname in $stats_table\n";
-	    system("/opt/munin/lib/munin-update", "--config_file=$conf_file") == 0 or return EXIT_MUNIN_ERROR; #, "--host", "$hostname", "--debug"
-	    $sth->execute($from_time) || LOGDIE "Error $DBI::errstr\n";
-	    if ($crt_rows == 0) {
-		copy ("$work_dir/datafile", "$munin_db_fake_dir/datafile.$plugin_name") or LOGDIE "can't copy datafile file $work_dir/datafile to $munin_db_fake_dir/datafile.$plugin_name: $!\n";
-	    }
-	    $crt_rows += scalar @$aref;
-	    INFO "$input - Total rows is $total_rows, already done is $crt_rows ($input).\n";
-# 	    if ($batch_nr_rows==1){
-		## on 3000 rows iostat can generate a 150MB file. also mysql dies if we use too many rows
-# 	    }
-# 	    system("/opt/munin/lib/munin-limits"); #, "--debug"
-# 	    system("/opt/munin/lib/munin-html"); #, "--debug"
+	    $from_time = $row->{timestamp};
 	}
-# };
-# my $exit_status = $@;
-# if ($exit_status) {
-#   WARN "$input - Got error on updating munin data: $exit_status\n";
-#   if ($exit_status =~ m/Lost connection to MySQL server during query/) {
-#     WARN "$input - SQL error for $stats_table from host id=$host_id, name=$hostname, retry.\n";
-#   } else {
-#     print Dumper($exit_status);
-#     return EXIT_MUNIN_ERROR;
-#   }
-# } else {
-#   $not_done = 0;
-# }
-# return EXIT_MUNIN_ERROR if ! -f "$work_dir/datafile";
-# print Dumper("$work_dir/datafile", "$munin_db_fake_dir/datafile.$plugin_name");
- 
-# 	copyOldFiles(2);
-	rmtree ($work_dir);
-# 	system("/opt/munin/lib/munin-update") == 0 or return EXIT_MUNIN_ERROR;
-# 	system("/opt/munin/lib/munin-limits") == 0 or return EXIT_MUNIN_ERROR;
-# 	system("/opt/munin/lib/munin-html") == 0 or return EXIT_MUNIN_ERROR;
-	INFO "$input - Done munin update $stats_table from host id=$host_id, name=$hostname\n";
-#     }
-# };
-    return EXIT_MUNIN_SUCCESS;
+
+	DEBUG "$input - Running munin-update for $full_hostname in $stats_table\n";
+	system("/opt/munin/lib/munin-update", "--config_file=$conf_file", "--nofork") == 0 or return EXIT_MUNIN_ERROR; #, "--host", "$hostname", "--debug"
+	$sth->execute($from_time, $batch_nr_rows) || LOGDIE "Error $DBI::errstr\n";
+	if ($crt_rows == 0) {
+	    copy ("$work_dir/datafile", "$munin_db_fake_dir/datafile.$plugin_name") or LOGDIE "can't copy datafile file $work_dir/datafile to $munin_db_fake_dir/datafile.$plugin_name: $!\n";
+	}
+	$crt_rows += scalar @$aref;
+	INFO "$input - Total rows is $total_rows, already done is $crt_rows ($input).\n";
+    }
+    rmtree ($work_dir);
+    INFO "$input - Done munin update $stats_table from host=$host\n";
+    return SUCCESS_LAST;
 }
 
 sub finishedWork {
     my ( $input, $new_status, $old_status) = @_;
-    my ($host_id, $stats_table, $plugin_name, $customer_guess) = fixInput($input);
-    DEBUG "$input - Done munin: Updating all files from hostid=$host_id with status $new_status\n";
+    initVars($input);
+    DEBUG "$input - Done munin: Updating all files from host=$host with status $new_status\n";
     my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=$new_status WHERE status=$old_status and host_id=$host_id") || die "Error $DBI::errstr\n";
-    foreach (MindCommons::find_files_recursively("$Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/")){
-	next if $_ !~ m/datafile/;
-	print "$_\n";
-    }
     return $new_status;
 }
 

@@ -25,11 +25,13 @@ CREATE TABLE IF NOT EXISTS collected_files (
 	host_id int not null,
 	file_name varchar(2500) not null,
 	file_md5 varchar(50) not null,
-	inserttime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	size int,
+	inserttime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	parse_duration decimal(15,5),
 	parse_done_time DATETIME,
 	inserted_in_tablename varchar(100),
+	app_name varchar(100),
+	worker_type varchar(100),
 	status int not null,
 	PRIMARY KEY(id)
 	);
