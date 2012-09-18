@@ -121,6 +121,8 @@ function get_header () {
     <head>
         <meta charset="utf-8" />
         <title>Statistics graphs</title>
+        <script type="text/javascript" src="js/progress_bar.js"></script>
+        
 	<script type="text/javascript" src="js/script_menu.js"></script>
 	<!-- Bootstrap CSS Toolkit styles -->
 	<!-- <link rel="stylesheet" href="http://blueimp.github.com/cdn/css/bootstrap.min.css"> -->

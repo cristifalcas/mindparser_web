@@ -11,16 +11,18 @@
  */
 
 // include_once('config.inc.php');
-
 class UploadHandler
 {
     protected $options;
 
     function __construct($options=null) {
+	$dir = "uploads/".$_GET['customer']."/".$_GET['host'];
 	session_start();
-	$dir = $_SESSION['upload_dir'];
+
         $this->options = array(
             'script_url' => $this->getFullUrl().'/',
+            'customer' => $_GET['customer'],
+            'host' => $_GET['host'],
             'upload_dir' => dirname($_SERVER['SCRIPT_FILENAME'])."/$dir/",
             'upload_url' => $this->getFullUrl()."/$dir/",
             'param_name' => 'files',
@@ -35,15 +37,15 @@ class UploadHandler
             // The maximum number of files for the upload directory:
             'max_number_of_files' => null,
             // Image resolution restrictions:
-            'max_width' => null,
-            'max_height' => null,
-            'min_width' => 1,
-            'min_height' => 1,
+//             'max_width' => null,
+//             'max_height' => null,
+//             'min_width' => 1,
+//             'min_height' => 1,
             // Set the following option to false to enable resumable uploads:
             'discard_aborted_uploads' => true,
             // Set to true to rotate images based on EXIF meta data, if available:
-            'orient_image' => false,
-            'image_versions' => array(
+//             'orient_image' => false,
+//             'image_versions' => array(
                 // Uncomment the following version to restrict the size of
                 // uploaded images. You can also add additional versions with
                 // their own upload directories:
@@ -56,13 +58,13 @@ class UploadHandler
                     'jpeg_quality' => 95
                 ),
                 */
-                'thumbnail' => array(
-                    'upload_dir' => dirname($_SERVER['SCRIPT_FILENAME']).'/thumbnails/',
-                    'upload_url' => $this->getFullUrl().'/thumbnails/',
-                    'max_width' => 80,
-                    'max_height' => 80
-                )
-            )
+//                 'thumbnail' => array(
+//                     'upload_dir' => dirname($_SERVER['SCRIPT_FILENAME']).'/thumbnails/',
+//                     'upload_url' => $this->getFullUrl().'/thumbnails/',
+//                     'max_width' => 80,
+//                     'max_height' => 80
+//                 )
+//             )
         );
         if ($options) {
             $this->options = array_replace_recursive($this->options, $options);
@@ -81,8 +83,8 @@ class UploadHandler
     }
 
     protected function set_file_delete_url($file) {
-        $file->delete_url = $this->options['script_url']
-            .'?file='.rawurlencode($file->name);
+        $file->delete_url = $this->options['script_url']."upload.class.php"
+            .'?file='.rawurlencode($file->name)."&customer=".$this->options['customer']."&host=".$this->options['host'];
         $file->delete_type = $this->options['delete_type'];
         if ($file->delete_type !== 'DELETE') {
             $file->delete_url .= '&_method=DELETE';
@@ -96,12 +98,12 @@ class UploadHandler
             $file->name = $file_name;
             $file->size = filesize($file_path);
             $file->url = $this->options['upload_url'].rawurlencode($file->name);
-            foreach($this->options['image_versions'] as $version => $options) {
-                if (is_file($options['upload_dir'].$file_name)) {
-                    $file->{$version.'_url'} = $options['upload_url']
-                        .rawurlencode($file->name);
-                }
-            }
+//             foreach($this->options['image_versions'] as $version => $options) {
+//                 if (is_file($options['upload_dir'].$file_name)) {
+//                     $file->{$version.'_url'} = $options['upload_url']
+//                         .rawurlencode($file->name);
+//                 }
+//             }
             $this->set_file_delete_url($file);
             return $file;
         }
@@ -115,66 +117,66 @@ class UploadHandler
         )));
     }
 
-    protected function create_scaled_image($file_name, $options) {
-        $file_path = $this->options['upload_dir'].$file_name;
-        $new_file_path = $options['upload_dir'].$file_name;
-        list($img_width, $img_height) = @getimagesize($file_path);
-        if (!$img_width || !$img_height) {
-            return false;
-        }
-        $scale = min(
-            $options['max_width'] / $img_width,
-            $options['max_height'] / $img_height
-        );
-        if ($scale >= 1) {
-            if ($file_path !== $new_file_path) {
-                return copy($file_path, $new_file_path);
-            }
-            return true;
-        }
-        $new_width = $img_width * $scale;
-        $new_height = $img_height * $scale;
-        $new_img = @imagecreatetruecolor($new_width, $new_height);
-        switch (strtolower(substr(strrchr($file_name, '.'), 1))) {
-            case 'jpg':
-            case 'jpeg':
-                $src_img = @imagecreatefromjpeg($file_path);
-                $write_image = 'imagejpeg';
-                $image_quality = isset($options['jpeg_quality']) ?
-                    $options['jpeg_quality'] : 75;
-                break;
-            case 'gif':
-                @imagecolortransparent($new_img, @imagecolorallocate($new_img, 0, 0, 0));
-                $src_img = @imagecreatefromgif($file_path);
-                $write_image = 'imagegif';
-                $image_quality = null;
-                break;
-            case 'png':
-                @imagecolortransparent($new_img, @imagecolorallocate($new_img, 0, 0, 0));
-                @imagealphablending($new_img, false);
-                @imagesavealpha($new_img, true);
-                $src_img = @imagecreatefrompng($file_path);
-                $write_image = 'imagepng';
-                $image_quality = isset($options['png_quality']) ?
-                    $options['png_quality'] : 9;
-                break;
-            default:
-                $src_img = null;
-        }
-        $success = $src_img && @imagecopyresampled(
-            $new_img,
-            $src_img,
-            0, 0, 0, 0,
-            $new_width,
-            $new_height,
-            $img_width,
-            $img_height
-        ) && $write_image($new_img, $new_file_path, $image_quality);
-        // Free up memory (imagedestroy does not delete files):
-        @imagedestroy($src_img);
-        @imagedestroy($new_img);
-        return $success;
-    }
+//     protected function create_scaled_image($file_name, $options) {
+//         $file_path = $this->options['upload_dir'].$file_name;
+//         $new_file_path = $options['upload_dir'].$file_name;
+//         list($img_width, $img_height) = @getimagesize($file_path);
+//         if (!$img_width || !$img_height) {
+//             return false;
+//         }
+//         $scale = min(
+//             $options['max_width'] / $img_width,
+//             $options['max_height'] / $img_height
+//         );
+//         if ($scale >= 1) {
+//             if ($file_path !== $new_file_path) {
+//                 return copy($file_path, $new_file_path);
+//             }
+//             return true;
+//         }
+//         $new_width = $img_width * $scale;
+//         $new_height = $img_height * $scale;
+//         $new_img = @imagecreatetruecolor($new_width, $new_height);
+//         switch (strtolower(substr(strrchr($file_name, '.'), 1))) {
+//             case 'jpg':
+//             case 'jpeg':
+//                 $src_img = @imagecreatefromjpeg($file_path);
+//                 $write_image = 'imagejpeg';
+//                 $image_quality = isset($options['jpeg_quality']) ?
+//                     $options['jpeg_quality'] : 75;
+//                 break;
+//             case 'gif':
+//                 @imagecolortransparent($new_img, @imagecolorallocate($new_img, 0, 0, 0));
+//                 $src_img = @imagecreatefromgif($file_path);
+//                 $write_image = 'imagegif';
+//                 $image_quality = null;
+//                 break;
+//             case 'png':
+//                 @imagecolortransparent($new_img, @imagecolorallocate($new_img, 0, 0, 0));
+//                 @imagealphablending($new_img, false);
+//                 @imagesavealpha($new_img, true);
+//                 $src_img = @imagecreatefrompng($file_path);
+//                 $write_image = 'imagepng';
+//                 $image_quality = isset($options['png_quality']) ?
+//                     $options['png_quality'] : 9;
+//                 break;
+//             default:
+//                 $src_img = null;
+//         }
+//         $success = $src_img && @imagecopyresampled(
+//             $new_img,
+//             $src_img,
+//             0, 0, 0, 0,
+//             $new_width,
+//             $new_height,
+//             $img_width,
+//             $img_height
+//         ) && $write_image($new_img, $new_file_path, $image_quality);
+//         // Free up memory (imagedestroy does not delete files):
+//         @imagedestroy($src_img);
+//         @imagedestroy($new_img);
+//         return $success;
+//     }
 
     protected function validate($uploaded_file, $file, $error, $index) {
         if ($error) {
@@ -212,19 +214,19 @@ class UploadHandler
             $file->error = 'maxNumberOfFiles';
             return false;
         }
-        list($img_width, $img_height) = @getimagesize($uploaded_file);
-        if (is_int($img_width)) {
-            if ($this->options['max_width'] && $img_width > $this->options['max_width'] ||
-                    $this->options['max_height'] && $img_height > $this->options['max_height']) {
-                $file->error = 'maxResolution';
-                return false;
-            }
-            if ($this->options['min_width'] && $img_width < $this->options['min_width'] ||
-                    $this->options['min_height'] && $img_height < $this->options['min_height']) {
-                $file->error = 'minResolution';
-                return false;
-            }
-        }
+//         list($img_width, $img_height) = @getimagesize($uploaded_file);
+//         if (is_int($img_width)) {
+//             if ($this->options['max_width'] && $img_width > $this->options['max_width'] ||
+//                     $this->options['max_height'] && $img_height > $this->options['max_height']) {
+//                 $file->error = 'maxResolution';
+//                 return false;
+//             }
+//             if ($this->options['min_width'] && $img_width < $this->options['min_width'] ||
+//                     $this->options['min_height'] && $img_height < $this->options['min_height']) {
+//                 $file->error = 'minResolution';
+//                 return false;
+//             }
+//         }
         return true;
     }
 
@@ -265,34 +267,34 @@ class UploadHandler
         // Handle form data, e.g. $_REQUEST['description'][$index]
     }
 
-    protected function orient_image($file_path) {
-      	$exif = @exif_read_data($file_path);
-        if ($exif === false) {
-            return false;
-        }
-      	$orientation = intval(@$exif['Orientation']);
-      	if (!in_array($orientation, array(3, 6, 8))) {
-      	    return false;
-      	}
-      	$image = @imagecreatefromjpeg($file_path);
-      	switch ($orientation) {
-        	  case 3:
-          	    $image = @imagerotate($image, 180, 0);
-          	    break;
-        	  case 6:
-          	    $image = @imagerotate($image, 270, 0);
-          	    break;
-        	  case 8:
-          	    $image = @imagerotate($image, 90, 0);
-          	    break;
-          	default:
-          	    return false;
-      	}
-      	$success = imagejpeg($image, $file_path);
-      	// Free up memory (imagedestroy does not delete files):
-      	@imagedestroy($image);
-      	return $success;
-    }
+//     protected function orient_image($file_path) {
+//       	$exif = @exif_read_data($file_path);
+//         if ($exif === false) {
+//             return false;
+//         }
+//       	$orientation = intval(@$exif['Orientation']);
+//       	if (!in_array($orientation, array(3, 6, 8))) {
+//       	    return false;
+//       	}
+//       	$image = @imagecreatefromjpeg($file_path);
+//       	switch ($orientation) {
+//         	  case 3:
+//           	    $image = @imagerotate($image, 180, 0);
+//           	    break;
+//         	  case 6:
+//           	    $image = @imagerotate($image, 270, 0);
+//           	    break;
+//         	  case 8:
+//           	    $image = @imagerotate($image, 90, 0);
+//           	    break;
+//           	default:
+//           	    return false;
+//       	}
+//       	$success = imagejpeg($image, $file_path);
+//       	// Free up memory (imagedestroy does not delete files):
+//       	@imagedestroy($image);
+//       	return $success;
+//     }
 
     protected function handle_file_upload($uploaded_file, $name, $size, $type, $error, $index = null) {
         $file = new stdClass();
@@ -328,21 +330,21 @@ class UploadHandler
             }
             $file_size = filesize($file_path);
             if ($file_size === $file->size) {
-            	if ($this->options['orient_image']) {
-            		$this->orient_image($file_path);
-            	}
+//             	if ($this->options['orient_image']) {
+//             		$this->orient_image($file_path);
+//             	}
                 $file->url = $this->options['upload_url'].rawurlencode($file->name);
-                foreach($this->options['image_versions'] as $version => $options) {
-                    if ($this->create_scaled_image($file->name, $options)) {
-                        if ($this->options['upload_dir'] !== $options['upload_dir']) {
-                            $file->{$version.'_url'} = $options['upload_url']
-                                .rawurlencode($file->name);
-                        } else {
-                            clearstatcache();
-                            $file_size = filesize($file_path);
-                        }
-                    }
-                }
+//                 foreach($this->options['image_versions'] as $version => $options) {
+//                     if ($this->create_scaled_image($file->name, $options)) {
+//                         if ($this->options['upload_dir'] !== $options['upload_dir']) {
+//                             $file->{$version.'_url'} = $options['upload_url']
+//                                 .rawurlencode($file->name);
+//                         } else {
+//                             clearstatcache();
+//                             $file_size = filesize($file_path);
+//                         }
+//                     }
+//                 }
             } else if ($this->options['discard_aborted_uploads']) {
                 unlink($file_path);
                 $file->error = 'abort';
@@ -426,17 +428,53 @@ class UploadHandler
         $file_name = isset($_REQUEST['file']) ?
             basename(stripslashes($_REQUEST['file'])) : null;
         $file_path = $this->options['upload_dir'].$file_name;
+// error_log("XXX $file_path");
         $success = is_file($file_path) && $file_name[0] !== '.' && unlink($file_path);
-        if ($success) {
-            foreach($this->options['image_versions'] as $version => $options) {
-                $file = $options['upload_dir'].$file_name;
-                if (is_file($file)) {
-                    unlink($file);
-                }
-            }
-        }
+//         if ($success) {
+//             foreach($this->options['image_versions'] as $version => $options) {
+//                 $file = $options['upload_dir'].$file_name;
+//                 if (is_file($file)) {
+//                     unlink($file);
+//                 }
+//             }
+//         }
         header('Content-type: application/json');
         echo json_encode($success);
     }
 
 }
+
+error_reporting(E_ALL | E_STRICT);
+
+// require('upload.class.php');
+
+$upload_handler = new UploadHandler();
+
+header('Pragma: no-cache');
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Content-Disposition: inline; filename="files.json"');
+header('X-Content-Type-Options: nosniff');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: OPTIONS, HEAD, GET, POST, PUT, DELETE');
+header('Access-Control-Allow-Headers: X-File-Name, X-File-Type, X-File-Size');
+
+switch ($_SERVER['REQUEST_METHOD']) {
+    case 'OPTIONS':
+        break;
+    case 'HEAD':
+    case 'GET':
+        $upload_handler->get();
+        break;
+    case 'POST':
+        if (isset($_REQUEST['_method']) && $_REQUEST['_method'] === 'DELETE') {
+            $upload_handler->delete();
+        } else {
+            $upload_handler->post();
+        }
+        break;
+    case 'DELETE':
+        $upload_handler->delete();
+        break;
+    default:
+        header('HTTP/1.1 405 Method Not Allowed');
+} 

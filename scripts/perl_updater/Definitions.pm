@@ -8,10 +8,10 @@ use base 'Exporter';
 use constant {
     EXIT_STATUS_NA	=>-1,
     IGNORE		=> 0,
-    START_EXTRACT	=> 1,
-    START_STATS		=> 2,
-    START_MUNIN		=> 3,
-    START_PARSELOG	=> 4,
+    START_EXTRACT	=> 1,	## file is ready for extract
+    START_STATS		=> 2,	## file is ready for statistics gathering
+    START_MUNIN		=> 3,	## file is ready for munin update
+    START_PARSELOG	=> 4,	## file is ready for logs parsing
 
     SUCCESS_LAST	=> 99,
     ERRORS_START	=> 100,
@@ -28,7 +28,7 @@ use constant {
     EXIT_NO_RRD		=> 125,
     EXIT_FILE_BAD	=> 126,
     EXIT_MUNIN_ERROR	=> 127,
-    ERRORS_LAST	=> 1000,
+    ERRORS_LAST		=> 1000,
 };
 
 # ^\s+ => '		\s+=(.*)\n => ', 

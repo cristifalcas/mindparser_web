@@ -88,16 +88,17 @@ sub extract_file {
     return EXIT_NO_FILE;
 }
 
-sub try_to_extract {
+sub start {
     my $hash = shift;
-# use Time::HiRes qw( usleep tv_interval gettimeofday);
-# my $t0 = [gettimeofday];
     foreach my $id (keys %$hash){
 	my $ret = extract_file($hash->{$id}->{file_name});
 	$hash->{$id}->{return_result} = $ret;
     }
-# WARN Dumper(tv_interval($t0), scalar (keys %$hash));
     return $hash;
+}
+
+sub finish {
+  my ($ret, $id, $data) = @_;
 }
 
 return 1;

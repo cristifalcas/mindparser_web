@@ -9,33 +9,29 @@ use warnings;
 use strict;
 $| = 1;
 
-use File::Copy;
 use File::Path qw(make_path remove_tree);
-use File::Basename;
-use Cwd 'abs_path';
-use Linux::Inotify2;
-use Time::Local;
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
-use Time::HiRes qw( usleep tv_interval gettimeofday);
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init({ level   => $WARN,
+Log::Log4perl->easy_init({ level   => $TRACE,
 #                            file    => ">>test.log" 
 			   layout   => "%d [%5p] (%6P) %m%n",
 });
-use POSIX ":sys_wait_h";
 
+use Cwd 'abs_path';
+use File::Basename;
 use lib (fileparse(abs_path($0), qr/\.[^.]*/))[1]."our_perl_lib/lib"; 
-use Mind_work::SqlWork;
+use File::Copy;
+#     use Time::Local;
 
 my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
 my $config = MindCommons::xmlfile_to_hash("config.xml");
 my $uploads_dir = $config->{dir_paths}->{uploads_dir};
 make_path($uploads_dir, $config->{dir_paths}->{filedone_dir}, $config->{dir_paths}->{fileerr_dir});
 
-my $threads_stats = 50;
-my $threads_extract = 10;
-my $threads_munin = 10;
+my $threads_stats = 1;
+my $threads_extract = 1;
+my $threads_munin = 1;
 my $threads_log = 0;
 my $dbh;
 
@@ -48,6 +44,7 @@ my $thread_name = "main";
 
 sub reap_children {
     my $running = shift;
+    use POSIX ":sys_wait_h";
     my $thread_nr;
     my $pid = waitpid(-1, WNOHANG);
     my $exit_status = $? >> 8;
@@ -66,6 +63,7 @@ sub reap_children {
 
 sub focker_launcher {
     my ($dowork, $getwork, $finishwork, $max_procs) = @_;
+    use Time::HiRes qw( usleep tv_interval gettimeofday);
     my $running;
     $dbh = new SqlWork();
     my @thread = (1..$max_procs);
@@ -136,7 +134,7 @@ sub periodic_checks {
 	close( STAT );
 	my $crt_nr = $nr;
 	$forks->{$pid_p} = $stat[1] if ! defined $forks->{$pid_p};
-	$string .= "**". " "x($nr*2) . " "x($nr?1:0) ."worker pid = $pid_p, VmSize = ".(sprintf "%.0f", $stat[22]/1024/1024)."MB, VmRSS =".(sprintf "%.0f", $stat[23] * 4/1024)."MB, daddy = $stat[3] name = $forks->{$pid_p}\n";
+	$string .= "**". " "x($nr*2) . " "x($nr?1:0) ."worker pid = $pid_p, VmSize = ".(sprintf "%.0f", $stat[22]/1024/1024)."MB, VmRSS = ".(sprintf "%.0f", $stat[23] * 4/1024)."MB, daddy = $stat[3] name = $forks->{$pid_p}\n";
 	$nr++;
 	
 	get_kids($forks, $_) foreach (map {s/\s//g; $_} split /\n/, `ps -o pid --no-headers --ppid $pid_p`);
@@ -150,54 +148,56 @@ sub periodic_checks {
     };
 }
 
-sub munin_getwork {
-    my $ret = $dbh->getWorkForMunin(START_MUNIN);
-    return $ret;
+sub extract_getwork {
+    return $dbh->getWorkForExtract(START_EXTRACT);
 }
 
-sub munin_work {
-    my $host_id = shift;
+sub statistics_getwork {
+    return $dbh->getWorkForParsers(START_STATS);
+}
+
+sub logparser_getwork {
+    return $dbh->getWorkForLogparser(START_STATS);
+}
+
+sub munin_getwork {
+    return $dbh->getWorkForMunin(START_MUNIN);
+}
+
+sub munin_worker {
+    my ($id, $data) = @_;
     use Mind_work::MuninWork;
-    $0 = "munin_work_$host_id";
-    my $ret = MuninWork::run($host_id);
+    my $ret = MuninWork::start($id, $data);
     return $ret;
 }
 
 sub munin_finish {
-    my ($id, $ret) = @_;
-    if ($ret == SUCCESS_LAST) {
-	$ret = MuninWork::finishedWork($id, $ret, START_MUNIN);
-	return SUCCESS_LAST;
-    } else {
-	INFO "Munin did not finish succesfully: $ret\n";
-	return EXIT_MUNIN_ERROR;
-    }
+    my ($ret, $id, $data) = @_;
+    MuninWork::finish($ret, $id, $data);
 }
 
-sub statistics_getwork {
-    my $ret = $dbh->getFilesForParsers(START_STATS);
+sub statistics_worker {
+    my ($id, $data) = @_;
+    use Mind_work::ParseStats;
+    my $ret = ParseStats::start($id, $data, $dbh);
     return $ret;
 }
 
 sub statistics_finish {
     my ($ret, $id, $data) = @_;
     moveFiles($ret, $id, $data);
-}
-
-sub statistics_worker {
-    my ($id, $data) = @_;
-    $0 = "parse_stats_$0";
-    use Mind_work::ParseStats;
-    my $ret = ParseStats::insertStats($id, $data, $dbh);
-    return $ret;
+    ParseStats::finish($ret, $id, $data);
 }
 
 sub extract_worker {
     my ($id, $data) = @_;
-# my $t0 = [gettimeofday];
-# print Dumper($id,$data);
     use Mind_work::ExtractFiles;
-    my $ret = ExtractFiles::try_to_extract($data);
+    my $ret = ExtractFiles::start($data);
+    return $ret;
+}
+
+sub extract_finish {
+    my ($ret, $id_q, $data) = @_;
     foreach my $id (keys %$ret){
 	my $status = $ret->{$id}->{return_result};
 	$status = $ret->{$id}->{status} if $ret->{$id}->{status} > ERRORS_START;
@@ -209,23 +209,26 @@ sub extract_worker {
 	$dbh->updateFileStatus ($id, $status);
 	moveFiles($status, $id, $ret->{$id}) if $status != $ret->{$id}->{return_result}; ## aka error
     }
-# print Dumper(tv_interval($t0));
-    return IGNORE;
+    ExtractFiles::finish($ret, $id_q, $data);
 }
 
-sub extract_getwork {
-    my $ret = $dbh->getWorkForExtract(START_EXTRACT);
+sub logparser_worker {
+    my ($id, $data) = @_;
+    use Mind_work::ParseLogs;
+    my $ret = ParseLogs::start($id, $data, $dbh);
     return $ret;
 }
 
-sub extract_finish {
+sub logparser_finish {
     my ($ret, $id, $data) = @_;
+    moveFiles($ret, $id, $data);
+    ParseLogs::finish($ret, $id, $data);
 }
 
 sub moveFiles {
     my ($ret, $id, $data) = @_;
     my $filename = $data->{file_name};
-    LOGDIE "worng data:".Dumper($ret, $id, $data) if ! (defined $data->{customer_id} && $data->{customer_id} > 0);
+    unlink $filename if ! (defined $data->{customer_id} && $data->{customer_id} > 0);
     my $cust_name = $dbh->get_customer_name($data->{customer_id});
     my $host_name = $dbh->get_host_name($data->{host_id});
     my $dir_prefix;
@@ -247,42 +250,27 @@ sub moveFiles {
     $dbh->updateFileStatus($id, $ret);
 }
 
-sub extractInfo {
-    my $name = shift;
-    my ($table_name, $type, $app);
-
-    if ($name =~ m/^((.*)?(statistics?|info))/i) {
-	$table_name = lc($1);
-	$app = $2;
-	$type = lc($3);
-	## fix asc name
-	$type = "statistics" if $type eq "statistic";
-    }
-    my $hash->{table_name} = $table_name;
-    $hash->{app} = $app;
-    $hash->{type} = $type;
-    return $hash;
-}
-
-sub insertFile {
+sub addFilesDB {
     my $file = shift;
-    return if -d $file;
-    DEBUG "Try to insert file $file.\n";
-    my $status;
-    my $file_hash;
     if ( -f $file ) {
+	DEBUG "Try to insert file $file.\n";
 	my ($name, $dir, $suffix) = fileparse($file, qr/\.[^.]*/);
-	$file_hash->{file_info}->{size} = -s $file;
+	my $file_hash->{file_info}->{size} = -s $file;
 	$file_hash->{file_info}->{name} = $file;
 	$file_hash->{file_info}->{md5} = MindCommons::get_file_sha($file);
 	($file_hash->{machine}->{customer}, $file_hash->{machine}->{host}) = $dir =~ m/^$uploads_dir\/*([^\/]+)\/+([^\/]+)\/+$/;
-	$file_hash->{worker} = extractInfo($name);
-	$status = START_EXTRACT;
-    } else {
-# 	$status = EXIT_NO_FILE;
-	return;
+	if ($name =~ m/^((.*)?(statistics?|info))/i) {
+	    my $table_name = lc($1);
+	    my $app = $2;
+	    my $type = lc($3);
+	    ## fix asc name
+	    $type = "statistics" if $type eq "statistic";
+	    $file_hash->{worker}->{table_name} = $table_name;
+	    $file_hash->{worker}->{app} = $app;
+	    $file_hash->{worker}->{type} = $type;
+	    $dbh->insertFile ($file_hash, START_EXTRACT);
+	}
     }
-    my $id = $dbh->insertFile ($status, $file_hash);
 }
 
 sub cleanAndExit {
@@ -296,7 +284,6 @@ sub main_process_worker {
     my $main_pid = $$;
     use sigtrap 'handler' => \&cleanAndExit, 'INT', 'ABRT', 'QUIT', 'TERM';
 
-
     ## since we never exit, we will probably never take care of those threads
     my ($forks, $pid);
     $forks->{$main_pid} = "main";
@@ -306,20 +293,23 @@ sub main_process_worker {
     $pid = fork();
     if (!$pid) {focker_launcher(\&statistics_worker, \&statistics_getwork, \&statistics_finish, $threads_stats); exit 0;};
     $forks->{$pid} = "statistics";
-#     $pid = fork();
-#     if (!$pid) {focker_launcher(\&logparser_worker, \&logparser_getwork, \&logparser_finish, $threads_log); exit 0;};
-#     $forks->{$pid} = "logs";
+    $pid = fork();
+    if (!$pid) {focker_launcher(\&logparser_worker, \&logparser_getwork, \&logparser_finish, $threads_log); exit 0;};
+    $forks->{$pid} = "logs";
     $pid = fork();
     if (!$pid) {sleep 5;focker_launcher(\&munin_worker, \&munin_getwork, \&munin_finish, $threads_munin); exit 0;};
     $forks->{$pid} = "munin";
     $pid = fork();
     if (!$pid) {periodic_checks($forks, $main_pid); exit 0;};
     $forks->{$pid} = "checks";
+    use Linux::Inotify2;
+
     DEBUG Dumper($forks);
+    use Mind_work::SqlWork;
 
     $dbh = new SqlWork();
     assign_watchers($uploads_dir);
-    insertFile ($_) foreach (MindCommons::find_files_recursively($uploads_dir));
+    addFilesDB ($_) foreach (MindCommons::find_files_recursively($uploads_dir));
 
     while (1) {
 	my @events = $inotify->read;
@@ -333,7 +323,7 @@ sub main_process_worker {
 		DEBUG "Del dir ". $event->fullname . "\n";
 		delete $watched_folders->{$event->fullname};
 	    } elsif (($event->IN_CLOSE_WRITE || $event->IN_MOVED_FROM || $event->IN_MOVED_TO) && -f $event->fullname) {
-		insertFile ($event->fullname);
+		addFilesDB ($event->fullname);
 	    } elsif ($event->IN_CREATE && -d $event->fullname) {
 		DEBUG "Add dir ".$event->fullname."\n";
 	    }
@@ -375,54 +365,3 @@ eval {main_process_worker();};
 ERROR "Error in main thread: $@\n" if $@;
 kill 9, map {s/\s//g; $_} split /\n/, `ps -o pid --no-headers --ppid $$`;
 exit ERRORS_LAST;
-
-my $path_files = abs_path("d:\\temp\\rtslogs\\rts_logs\\");
-my $header = {};
-my $body = {};
-my $others;
-my @ignored;
-
-sub add_document{
-	my $file = shift;
-	my @text = read_file( $file ) ;
-#	return if $file ne "d:/temp/rtslogs/rts_logs/q";
-	print "$file\n";
-	parse_file(\@text);
-}
-
-sub parse_file_mind {
-	my $text = shift;
-	my $count = 0;
-	my $block;
-	foreach my $line (@$text){
-#		print "$count\r" if ! (++$count % 500);
-		if ($line =~ m/^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d,\d{2,3})(.*)$/){
-			if (defined $block && $block !~ m/^\s*$/) {
-				parse_block($block);
-			}
-			$block = $line;
-		} else {
-			$block .= $line;
-		}
-	}
-	parse_block($block);
-}
-
-sub parse_file_in {
-	my $text = shift;
-	my $count = 0;
-	my $block;
-	foreach my $line (@$text){
-#		print "$count\r" if ! (++$count % 500);
-		if ($line =~ m/^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d,\d{2,3})\s+([a-z]+):\s+ ([^\s]) \[DialogicMainThread\] [-]+ EVENT START [-]+$/i){
-			if (defined $block && $block !~ m/^\s*$/) {
-				parse_block_in($block);
-			}
-			$block = $line;
-		} else {
-			$block .= $line;
-		}
-	}
-	parse_block_in($block);
-}
-

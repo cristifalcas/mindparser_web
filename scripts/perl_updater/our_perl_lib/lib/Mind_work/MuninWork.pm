@@ -4,6 +4,9 @@ package MuninWork;
 # in /opt/munin/lib/munin-async I print "\n.\n" instead of ".\n" after "print $spoolreader->fetch($last_epoch);"
 # in /usr/local/share/perl5/Munin/Master/Node.pm at line 254 $correct variable should be initialized with 0
 # /usr/local/share/perl5/Munin/Master/ProcessManager.pm : accept_timeout  => 2,
+## update timeouts
+# /usr/share/perl5/vendor_perl/Munin/Master/ProcessManager.pm
+# /usr/share/perl5/vendor_perl/Munin/Master/Config.pm
 
 use warnings;
 use strict;
@@ -16,30 +19,78 @@ $Data::Dumper::Sortkeys = 1;
 use File::Path qw(make_path);
 use File::Path 'rmtree';
 use File::Copy;
+use Cwd 'abs_path';
+use File::Basename;
 
 use Log::Log4perl qw(:easy);
 use Definitions ':all';
 
-use Mind_work::SqlWork;
+# use Mind_work::SqlWork;
 use Mind_work::MindCommons;
 my $config = MindCommons::xmlfile_to_hash("config.xml");
 my $db_h;
-my ($spoolwriter, $munin_dbdir, $munin_db_fake_dir, $rate);
-my ($conf_file, $full_hostname, $work_dir, $customer, $host, $plugins_conf_dir);
-my ($host_id, $stats_table, $plugin_name);
+my $rate = 300;
+my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
+my $plugins_conf_dir = "$script_path/".$config->{dir_paths}->{plugins_conf_dir_postfix};
+my ($host_id, $stats_table, $customer, $host, $plugin_name, $conf_file, $work_dir, $spoolwriter);
 
 # "$Munin::Common::Defaults::MUNIN_CONFDIR"
 # "$Munin::Common::Defaults::MUNIN_SPOOLDIR"
 # "$Munin::Common::Defaults::MUNIN_DBDIR"
 
+sub initVars {
+    my $input = shift;
+    my $hash = $db_h->selectall_hashref(
+			"SELECT a.id,c.name customer,h.name host,h.id host_id, a.inserted_in_tablename tablename, a.app_name appname
+				  FROM $config->{db_config}->{collected_file_table} a,
+					$config->{db_config}->{host_table} h,
+					$config->{db_config}->{cust_table} c
+			WHERE a.id in (". (join ",", @$input).") and h.id=a.host_id and c.id=a.customer_id", 'id');
+    foreach my $key (keys %$hash){
+# print Dumper($key,$hash->{$key});
+	LOGDIE "strange files for munin:".Dumper($hash->{$key}, $host_id, $stats_table, $customer, $host, $plugin_name) 
+	      if ( defined $host_id && $host_id != $hash->{$key}->{host_id} ) ||
+		 ( defined $stats_table && $stats_table ne $hash->{$key}->{tablename} ) ||
+		 ( defined $customer && $customer ne $hash->{$key}->{customer} ) ||
+		 ( defined $host && $host ne $hash->{$key}->{host} ) ||
+		 ( defined $plugin_name && $plugin_name ne lc($hash->{$key}->{appname}) );
+	$host_id = $hash->{$key}->{host_id};
+	$stats_table = $hash->{$key}->{tablename};
+	$customer = $hash->{$key}->{customer};
+	$host = $hash->{$key}->{host};
+	$plugin_name = lc($hash->{$key}->{appname});
+    }
+
+    $work_dir = "$config->{dir_paths}->{filetmp_dir}/munin/$customer\_$host\_$plugin_name/";
+    rmtree ($work_dir);
+    make_path $work_dir || LOGDIE "can't create spool dir $work_dir.\n";
+
+    my $munin_dbdir = "$Munin::Common::Defaults::MUNIN_DBDIR";
+    make_path "$munin_dbdir/$customer/" if ! -d "$munin_dbdir/$customer/";
+    system("ln", "-s", "$munin_dbdir/$customer/", "$work_dir/") == 0 || LOGDIE "can't symlink rrd dir: $!\n";
+
+    $conf_file = "$work_dir/$customer\_$host.conf";
+    make_path $work_dir || LOGDIE "can't create spool dir $work_dir.\n";
+    writeConfFiles();
+
+    $spoolwriter = Munin::Node::SpoolWriter->new(
+	spooldir => $work_dir,
+    ## munin will not update previous day on day change at all otherwise
+	interval_size => 86400 * 365,
+	interval_keep => 365,
+	hostname  => "$host.$customer",
+    );
+}
+
 sub writeConfFiles {
+    my $full_hostname = "$host.$customer";
+
     ##fake dirs in file for real munin
     open(MYOUTFILE, ">$Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$full_hostname") || LOGDIE "can't open file $Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$full_hostname: $!\n";
     print MYOUTFILE "[$full_hostname]
       update yes
-      address ssh://munin\@localhost /opt/munin/lib/munin-async --spoolfetch --spooldir $munin_db_fake_dir\n";
+      address ssh://munin\@localhost /usr/share/munin/munin-async --spoolfetch --spooldir /tmp/munin_db_fake_dir\n";
     close(MYOUTFILE);
-    if (! -d $munin_db_fake_dir) {make_path $munin_db_fake_dir or LOGDIE "can't make dir $munin_db_fake_dir: $!\n";}
 
     ## real conf file for us
     open(MYOUTFILE, ">$conf_file") || LOGDIE "can't open file $conf_file: $!\n";
@@ -48,54 +99,8 @@ dbdir $work_dir
 
 [$full_hostname]
       update yes
-      address ssh://munin\@localhost /opt/munin/lib/munin-async --spoolfetch --spooldir $work_dir --cleanup\n";
+      address ssh://munin\@localhost /usr/share/munin/munin-async --spoolfetch --spooldir $work_dir --cleanup\n";
     close(MYOUTFILE);
-}
-
-sub initVars {
-    my $input = shift;
-    use Cwd 'abs_path';
-    use File::Basename;
-
-    ($host_id, $stats_table, $plugin_name, my $customer_guess) = $input =~ m/^(.*)?\+((.*)?statistics?_(.*))$/;
-    $customer = getCustomerName($host_id);
-    $host = getHostName($host_id);
-    LOGDIE "$input - strange customers: $customer_guess <> $customer\n" if lc($customer_guess) ne lc($customer);
-
-    $munin_dbdir = "$Munin::Common::Defaults::MUNIN_DBDIR";
-    ## munin will not update previous day on day change at all otherwise
-    my $intervalsize = 86400 * 365;
-    my $retaincount = 365;
-    $rate = 300;
-
-    $full_hostname = "$host.$customer";
-    $munin_db_fake_dir = "$Munin::Common::Defaults::MUNIN_SPOOLDIR/faker/$full_hostname/";
-
-    my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
-    $work_dir = "$filetmp_dir/munin/$customer\_$host\_$plugin_name/";
-    my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
-
-    $plugins_conf_dir = "$script_path/".$config->{dir_paths}->{plugins_conf_dir_postfix};
-
-    make_path $work_dir || LOGDIE "can't create spool dir $work_dir.\n";
-    $spoolwriter = Munin::Node::SpoolWriter->new(
-	spooldir => $work_dir,
-	interval_size => $intervalsize,
-	interval_keep => $retaincount,
-	hostname  => $full_hostname,
-    );
-    
-    $conf_file = "$work_dir/$customer\_$host.conf";
-}
-
-sub getCustomerName {
-    my $host_id = shift;
-    return $db_h->selectrow_array("select c.name from hosts h, customers c where h.customer_id=c.id and h.id=$host_id");
-}
-
-sub getHostName {
-    my $host_id = shift;
-    return $db_h->selectrow_array("select name from hosts where id=$host_id");
 }
 
 sub getColumns {
@@ -111,7 +116,8 @@ sub getColumns {
     return $sth->fetchall_hashref('md5');
 }
 
-sub copyOldFiles {
+sub linkRRDFiles {
+    my $munin_dbdir = "$Munin::Common::Defaults::MUNIN_DBDIR";
 #     my $plugin_name = shift;
 #     use Storable;
 #     my $storable = sprintf ('%s/state-%s.storable', $munin_dbdir, "$customer-$hostname");#"state-$customer-$host.$customer.storable";
@@ -120,11 +126,6 @@ sub copyOldFiles {
 
 #     use File::Copy::Recursive qw(dircopy rcopy);
 #     if ($direction == 1) {
-	rmtree ($work_dir);
-	make_path $work_dir || LOGDIE "can't create spool dir $work_dir.\n";
-# 	    symlink("$munin_dbdir/$customer/", "$work_dir/") or LOGDIE "can't symlink rrd dir: $!\n";
-	make_path "$munin_dbdir/$customer/" if ! -d "$munin_dbdir/$customer/";
-	system("ln", "-s", "$munin_dbdir/$customer/", "$work_dir/") == 0 || LOGDIE "can't symlink rrd dir: $!\n";
 # 	if (scalar (glob("$munin_dbdir/$customer/$host.$customer-$plugin_name*"))){ #-f $storable || 
 # 	    copy ($storable, "$work_dir/$name$suffix") or LOGDIE "can't get storable file: $!\n";
 # 	    make_path "$work_dir/$customer" || LOGDIE "can't create dir $work_dir/$customer.\n";
@@ -226,34 +227,31 @@ sub connectDB {
     return $db_h;
 }
 
-sub run {
-    my $input = shift;
-#     INFO "$input - Start munin work using table $stats_table with host id=$host_id, name=$full_hostname\n";
+sub start {
+    my ($id, $data) = @_;
+#     INFO "Start munin work using table $stats_table with host id=$host_id, name=$full_hostname\n";
 
     connectDB;
-    initVars($input);
+    initVars($data);
     my $colums_name = getColumns($stats_table);
     my $batch_nr_rows = sprintf("%.0f", 20000/(scalar (keys %$colums_name)))+2;
-    DEBUG "$input - Retrieving rows in batches of $batch_nr_rows\n";
+    DEBUG "Retrieving rows in batches of $batch_nr_rows\n";
     my $graph_name = configPlugins($colums_name);
-    my $from_time = copyOldFiles;
-    writeConfFiles();
-    INFO "$input - Start time is $from_time\n";
+    my $from_time = linkRRDFiles;
+    INFO "Start time is $from_time\n";
 
     my ($total_rows) = $db_h->selectrow_array("SELECT count(*) FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp asc");
-    DEBUG "$input - Getting all lines from $stats_table with host $host, timestamp=$from_time ($total_rows)\n";
+    return EXIT_NO_ROWS if ! $total_rows;
+    DEBUG "Getting all lines from $stats_table with host $host($host_id), timestamp=$from_time ($total_rows)\n";
     my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>? order by timestamp limit ?");
-    $sth->execute(($from_time,$from_time ? $batch_nr_rows : 1)) || LOGDIE "Error $DBI::errstr\n";
+    $sth->execute(($from_time, $from_time ? $batch_nr_rows : 1)) || LOGDIE "Error $DBI::errstr\n";
 
     my $crt_rows = 0;
     while (my $aref = $sth->fetchall_arrayref({}) ){
-# my $q = $from_time - ($from_time % $rate);
-# print "$q, $from_time\n" if $q-$from_time !=0;
-# die "times: $q vs $from_time\n" if $q<=$from_time;
 	last if ! (scalar @$aref);
 	unlink glob ("$work_dir/munin-daemon.$plugin_name*");
 # Alon;RTS2.Alon:asc_Memory.CDEF wrongdata=allusers,UN,INF,UNKN,IF
-	DEBUG "$input - got nr rows : ".(scalar @$aref).".\n";
+	DEBUG "got nr rows : ".(scalar @$aref).".\n";
 	foreach my $row (@$aref){
 	    my @output_rows = (
 # 		"graph_title $stats_table",
@@ -310,26 +308,20 @@ sub run {
 	    $from_time = $row->{timestamp};
 	}
 
-	DEBUG "$input - Running munin-update for $full_hostname in $stats_table\n";
-	system("/opt/munin/lib/munin-update", "--config_file=$conf_file", "--nofork") == 0 or return EXIT_MUNIN_ERROR; #, "--host", "$hostname", "--debug"
+	DEBUG "Running munin-update for $host.$customer in $stats_table\n";
+	system("/usr/share/munin/munin-update", "--config_file=$conf_file", "--nofork") == 0 or return EXIT_MUNIN_ERROR;
 	$sth->execute($from_time, $batch_nr_rows) || LOGDIE "Error $DBI::errstr\n";
-	if ($crt_rows == 0) {
-	    copy ("$work_dir/datafile", "$munin_db_fake_dir/datafile.$plugin_name") or LOGDIE "can't copy datafile file $work_dir/datafile to $munin_db_fake_dir/datafile.$plugin_name: $!\n";
-	}
 	$crt_rows += scalar @$aref;
-	INFO "$input - Total rows is $total_rows, already done is $crt_rows ($input).\n";
+	INFO "Total rows is $total_rows, already done is $crt_rows.\n";
     }
     rmtree ($work_dir);
-    INFO "$input - Done munin update $stats_table from host=$host\n";
+    INFO "Done munin update $stats_table from host=$host\n";
     return SUCCESS_LAST;
 }
 
-sub finishedWork {
-    my ( $input, $new_status, $old_status) = @_;
-    initVars($input);
-    DEBUG "$input - Done munin: Updating all files from host=$host with status $new_status\n";
-    my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=$new_status WHERE status=$old_status and host_id=$host_id") || die "Error $DBI::errstr\n";
-    return $new_status;
+sub finish {
+    my ( $ret, $id, $data ) = @_;
+    my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=$ret WHERE id in (". (join ",", @$data).")") || die "Error $DBI::errstr\n";
 }
 
 # http://munin-monitoring.org/wiki/MultigraphSampleOutput

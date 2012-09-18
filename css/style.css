@@ -46,3 +46,61 @@ ul.menu .topline {border-top:1px solid #aaa}
   padding-bottom: 2px;
   padding-top: 2px;*/
 }
+
+/* progress bar at the bottom*/
+html, body {
+    height: 100%;
+}
+
+.wrapper {
+    min-height: 100%;
+    height: auto !important;
+    height: 100%;
+    margin: 0 auto -80px; /* the bottom margin is the negative value of the footer's height */
+}
+.footer, .push {
+    height: 80px; /* .push must be the same height as .footer */
+}
+
+
+
+
+
+
+
+
+
+
+/* green button - start */
+.green {
+	color: white;
+	background-color: #41A128;
+	border-width: 1px;
+}
+
+/* blue button - stop */
+.blue {
+	color: white;
+	background-color: #6A93D4;
+	border-width: 1px;
+}
+
+/* progress container */
+div#progress_container {
+	border: 6px double #ccc; 
+	width: 200px; 
+	margin: 0px;
+	padding: 0px;
+	text-align: left;
+}
+
+/* progress bar */
+div#progress {
+	color: white;
+	background-color: #FF8D40; 
+	height: 12px;
+	padding-bottom: 2px;
+	font-size: 12px;
+	text-align: center;
+	overflow: hidden;
+} 
