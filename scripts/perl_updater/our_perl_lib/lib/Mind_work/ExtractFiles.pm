@@ -34,32 +34,32 @@ sub extract_file {
     if ($mime_type eq 'text/plain; charset=us-ascii') {
 	if ( $suffix ne ".log"){
 	  DEBUG "Rename $filename to log.\n";
-	  move($filename, "$dir/$name$suffix\_".MindCommons::get_random.".log");
+	  move($filename, "$dir/$name$suffix\_".MindCommons::get_random.".log") || LOGDIE "Can't rename file $filename: $!\n";
 	  return EXIT_NO_FILE; ## file is gone now
       }
       DEBUG "Extract has nothing to do with file $name$suffix.\n";
-      return START_STATS;
+      return START_PARSERS;
     } elsif ($mime_type eq 'application/zip; charset=binary') {
 	if ($suffix ne ".zip") {
 	  DEBUG "Rename $filename to zip.\n";
-	  move($filename,"$dir/$name$suffix\_".MindCommons::get_random.".zip");
+	  move($filename,"$dir/$name$suffix\_".MindCommons::get_random.".zip") || LOGDIE "Can't rename file $filename: $!\n";
 	  return EXIT_NO_FILE;
 	}
     } elsif ($mime_type eq 'application/x-gzip; charset=binary') {
 	if ($suffix ne ".gz" && $suffix ne ".tgz") {
 	  DEBUG "Rename $filename to gz.\n";
-	  move($filename,"$dir/$name$suffix\_".MindCommons::get_random.".gz");
+	  move($filename,"$dir/$name$suffix\_".MindCommons::get_random.".gz") || LOGDIE "Can't rename file $filename: $!\n";
 	  return EXIT_NO_FILE;
 	}
     } elsif ($mime_type eq 'application/x-tar; charset=binary') {
 	if ($suffix ne ".tar") {
 	  DEBUG "Rename $filename to tar.\n";
-	  move($filename,"$dir/$name$suffix\_".MindCommons::get_random.".tar");
+	  move($filename,"$dir/$name$suffix\_".MindCommons::get_random.".tar") || LOGDIE "Can't rename file $filename: $!\n";
 	  return EXIT_NO_FILE;
 	}
     } elsif ($mime_type eq 'inode/x-empty; charset=binary') {
 	DEBUG "Empty file $filename.\n";
-	unlink $filename;
+	unlink $filename || LOGDIE "Can't delete file $filename: $!\n";
 	return EXIT_EMPTY;
     } else {
 	WARN "Unknown mime type: $mime_type for file $filename\n";
@@ -81,24 +81,53 @@ sub extract_file {
 	my ($name_e,$dir_e,$suffix_e) = fileparse($_, qr/\.[^.]*/);
 	my $new_name = "$dir/$name_e"."_".MindCommons::get_random."$suffix_e";
 	DEBUG "Moving $_ to $new_name.\n";
-	move("$_", $new_name);
+	move("$_", $new_name) || LOGDIE "Can't rename file $_: $!\n";
     }
-    remove_tree($tmp_dir);
-    unlink $filename;
+    remove_tree($tmp_dir) || LOGDIE "Can't delete dir $tmp_dir: $!\n";
+    unlink $filename || LOGDIE "Can't delete file $filename: $!\n";
     return EXIT_NO_FILE;
 }
 
 sub start {
-    my $hash = shift;
+    my ($hash, $dbh) = @_;
     foreach my $id (keys %$hash){
 	my $ret = extract_file($hash->{$id}->{file_name});
+	if ($ret == START_PARSERS) {
+# 	    my $filename = extract_file($hash->{$id}->{file_name};
+	    my ($name, $dir, $suffix) = fileparse($hash->{$id}->{file_name}, qr/\.[^.]*/);
+	    if ($name =~ m/^((.*?)(statistics?|info))/i) {
+		my $table_name = lc($1)."_$hash->{$id}->{host_id}";
+		my $app = $2;
+		my $type = lc($3);
+		LOGDIE "Wrong table name: $table_name" if $table_name !~ m/^[a-z0-9_]+$/i;
+		my $plugin_name = lc($app);
+		## fix asc name
+		$type = "statistics" if $type eq "statistic";
+		my $columns = ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name'];
+		my $values = [$hash->{$id}->{customer_id}, $hash->{$id}->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name)];
+		$dbh->insertRowsDB ($config->{db_config}->{mind_plugins}, $columns, $values);
+		my $plugin_id = $dbh->getIDUsed ($config->{db_config}->{mind_plugins}, $columns, $values);
+		$dbh->updateFileColumns ($id, ['plugin_id'], [$plugin_id]);
+	    } else {
+		$ret = EXIT_STATUS_NA;  ## we don't know what to do with this
+	    }
+	}
+
 	$hash->{$id}->{return_result} = $ret;
     }
-    return $hash;
+    return START_PARSERS;
 }
 
 sub finish {
-  my ($ret, $id, $data) = @_;
+  my ($ret, $data, $dbh) = @_;
+    foreach my $id (keys %$data){
+	my $status = $data->{$id}->{return_result};
+	$status = $data->{$id}->{status} if $data->{$id}->{status} > ERRORS_START;
+	$status = EXIT_FILE_BAD if $data->{$id}->{customer_id} eq EXIT_STATUS_NA."" || 
+				  $data->{$id}->{host_id} eq EXIT_STATUS_NA."";
+	$dbh->updateFileColumns ($id, ['status'], [$status]);
+	MindCommons::moveFiles($status, $data->{$id}, $dbh) if $status != $data->{$id}->{return_result}; ## aka error
+    }
 }
 
 return 1;

@@ -17,23 +17,37 @@ use Definitions ':all';
 my $config = MindCommons::xmlfile_to_hash("config.xml");
 
 sub finish {
-    my ($ret, $id, $data) = @_;
+    my ($ret, $data, $dbh) = @_;
+    MindCommons::moveFiles($ret, $data, $dbh);
+    $dbh->set_info_for_munin($data);
 }
 
-sub start {
-    my ($id, $data, $dbh) = @_;
-#     $0 = "parse_stats_$0";
+# sub addRows {
+#     my ($dbh, $table, $columns, @values);
+# print Dumper($table);die;
+#     foreach my $row (@values) {
+# 	foreach my $val (@$row) {
+# 	    $val = $dbh->getQuotedString($val);
+# 	}
+#     }
+# 
+# #     $dbh->insertRowsDB($table, $columns, @values);
+# }
 
-    my $cust_name =$dbh->get_host_name($data->{customer_id});
+sub start {
+    my ($data, $dbh) = @_;
+#     $0 = "parse_stats_$0";
+    my $cust_name = $dbh->get_host_name($data->{customer_id});
     my $host_name = $dbh->get_host_name($data->{host_id});
     my $filename = $data->{file_name};
     return EXIT_NO_FILE if (! -f $filename);
     my ($name, $dir, $suffix) = fileparse($filename, qr/\.[^.]*/);
-    my $table_name = $data->{inserted_in_tablename};
+    my $plugin_info = $dbh->getPluginInfo($data->{id});;
+    my $table_name = $plugin_info->{inserted_in_tablename};
 
-    INFO "Parsing $0 file $name$suffix (id=$data->{id}) as $table_name from cust=$cust_name, host=$host_name.\n";
+    INFO "Parsing file $name$suffix (id=$data->{id}) as $table_name from cust=$cust_name, host=$host_name.\n";
     $dbh->createStatsTable($table_name);
-    my (@header, $header_hash, $columns, @values);
+    my (@header, $header_hash, @columns, @values);
     my $t0 = [gettimeofday];my $t1=0;my $t2=0;
     my ($count, $second, $extra_arr) = (0, 1, 0);
     open (MYFILE, "$filename") or LOGDIE  "Couldn't open $filename: $!";
@@ -49,6 +63,7 @@ sub start {
 	      return EXIT_WRONG_TYPE ;
 	    }
 	    @header = @arr;
+# 	    shift @header;shift @header;$extra_arr += 2;  ## remove from header date and time
 	    $dbh->add_new_columns ($table_name, \@header);
 	} else {
 	    ## no support for new/changed fields in middle of the line
@@ -57,7 +72,7 @@ sub start {
 		LOGDIE "Strange line nr $count\n\t$line\n\tfrom file $filename\n" if $arr[0] ne "Date" || scalar @arr + $extra_arr != scalar @header;
 		next;
 	    }
-# 
+
 	    my ($d, $m, $y) = split '/', $arr[0]; #21/07/12
 	    my ($h, $min, $s) = split ':', $arr[1]; #03:00:15
 	    ## timelocal doesn't take GMT difference in consideration, rrd graph the same. this will insert a wrong time that will be corrected by rrd
@@ -77,32 +92,39 @@ sub start {
 		}
 	      }
 	      $header_hash = $dbh->get_md5_names(@header);
-# print Dumper("as",$header_hash,@header);
 	      $second = 0;
 	    }
 	    @arr = map{split /;/} @arr;
-	    my $new_vals;
+	    my @crt_vals;
 	    ## 1=timestamp, 2=date, 3=time
+	    push @crt_vals, ($data->{id}, $data->{host_id}, $arr[0], $dbh->getQuotedString($arr[1]), $dbh->getQuotedString($arr[2])) ;
 	    for (my $i = 3; $i < scalar @header; $i++) {
-# print Dumper($header_hash->{$header[$i]}, $header_hash, @header, $i);
-		$columns .= ",$header_hash->{$header[$i]}" if $count == 2;
-		$new_vals .= ", $arr[$i]";
+# 		$columns .= ",$header_hash->{$header[$i]}" if $count == 2;
+# 		$new_vals .= ", $arr[$i]";
+		push @columns, $header_hash->{$header[$i]} if $count == 2;
+		push @crt_vals, $arr[$i];
 	    }
-	    push @values, " ($data->{id}, ".$data->{host_id}.", $arr[0], '$arr[1]', '$arr[2]' $new_vals) ";
+# 	    push @values, " ($data->{id}, ".$data->{host_id}.", $arr[0], '$arr[1]', '$arr[2]' $new_vals) ";
+	    push @values, \@crt_vals;
 	    my $e=tv_interval($t0);$t2 += $e;$t1 += $e;
 	    if ($count % 200 == 0){
-		$dbh->insertRowsDB($table_name, "(file_id, host_id, $header[0], date, time $columns)", join ",", @values);
+		DEBUG "Insert ".(scalar @values)." rows took $t2 ($name$suffix)\n";$t2=0;
+# 		$dbh->insertRowsDB($table_name, "(file_id, host_id, $header[0], date, time $columns)", join ",", @values) if scalar @values;
+		$dbh->insertRowsDB($table_name, ['file_id', 'host_id', $header[0], 'date', 'time', @columns], @values);
+# 		addRows($dbh, $table_name, ['file_id', 'host_id', $header[0], 'date', 'time', @columns], @values);
 		@values = ();
-		DEBUG "Insert 200 rows for $0 took $t2 ($name$suffix)\n";$t2=0;
 	    };
 	    $t0 = [gettimeofday];;
 	}
     }
     close (MYFILE);
-    $dbh->insertRowsDB($table_name, "(file_id, host_id, $header[0], date, time $columns)", join ",", @values) if scalar @values;
-    $dbh->updateParseDuration($data->{id}, $t1);
-    DEBUG "Total parse $0 for $name$suffix took $t1\n";
-    INFO "Done stats $0 for file $name$suffix id $data->{id}\n";
+#     $dbh->insertRowsDB($table_name, "(file_id, host_id, $header[0], date, time $columns)", join ",", @values) if scalar @values;
+    TRACE "Insert ".(scalar @values)." rows took $t2 ($name$suffix)\n";$t2=0;
+    $dbh->insertRowsDB($table_name, ['file_id', 'host_id', $header[0], 'date', 'time', @columns], @values);
+#     addRows($dbh, $table_name, ['file_id', 'host_id', $header[0], 'date', 'time', @columns], @values);
+    $dbh->updateFileColumns($data->{id}, ['parse_duration','parse_done_time'], [$dbh->getQuotedString($t1), 'NOW()']);
+    DEBUG "Total parse for $name$suffix took $t1\n";
+    INFO "Done stats for file $name$suffix id $data->{id}\n";
     return START_MUNIN;
 }
 

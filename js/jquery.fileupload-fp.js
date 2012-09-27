@@ -19,7 +19,7 @@
         define([
             'jquery',
             'load-image',
-            'canvas-to-blob',
+//             'canvas-to-blob',
             './jquery.fileupload'
         ], factory);
     } else {

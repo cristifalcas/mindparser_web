@@ -24,7 +24,7 @@ if ($_POST){
     }
     if (isset($_POST['del_cust'])) {
 	$customer = $_POST['del_cust'];
-	$all_hosts = get_hosts($customer);
+	$all_hosts = get_hosts_sql($customer);
 	if (!sizeof($all_hosts)) {
 	    $query = "delete from $customers_table where name='$customer'";
 	    $result = mysql_query($query) or die("Error in query $query." .mysql_error()); 
@@ -41,7 +41,7 @@ if ($_POST){
     }
 }
 
-$all_customers = get_customers();
+$all_customers = get_customers_sql();
 
 echo "<div class=\"me_styled-input\">\n<form name=\"input\" action=\"edit.php\" method=\"post\">
 Add a new customer: <input type=\"text\" name=\"cust\" />
@@ -51,7 +51,7 @@ Add a new customer: <input type=\"text\" name=\"cust\" />
 if ( $customer != "") {
     $query = "INSERT IGNORE INTO $customers_table (name) VALUES('$customer')";
     $result = mysql_query($query) or die("Error in query $query." .mysql_error()); 
-    $all_customers = get_customers();
+    $all_customers = get_customers_sql();
 }
 
 echo "<p>Currently editing customer $customer.</p>";
@@ -71,7 +71,7 @@ if ( $customer != "") {
 	$result = mysql_query($query) or die("Error in query $query." .mysql_error()); 
     }
     echo "<br/><br/>Existing machines:";
-    $all_hosts = get_hosts($customer);
+    $all_hosts = get_hosts_sql($customer);
 
     echo "<div class=\"me_styled-select_edit\">\n".generateSelect('host', $all_hosts, $host, array("name" => 'cust', "value" => $customer))."</div>\n";
     if ( $host != "") {

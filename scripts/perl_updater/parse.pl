@@ -13,15 +13,16 @@ use File::Path qw(make_path remove_tree);
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init({ level   => $TRACE,
+Log::Log4perl->easy_init({ level   => $DEBUG,
 #                            file    => ">>test.log" 
-			   layout   => "%d [%5p] (%6P) %m%n",
+			   layout   => "%d [%5p] (%6P) [%rms] %m{chomp}\t[%M]\n",
 });
 
 use Cwd 'abs_path';
 use File::Basename;
 use lib (fileparse(abs_path($0), qr/\.[^.]*/))[1]."our_perl_lib/lib"; 
 use File::Copy;
+use Definitions ':all';
 #     use Time::Local;
 
 my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
@@ -29,18 +30,12 @@ my $config = MindCommons::xmlfile_to_hash("config.xml");
 my $uploads_dir = $config->{dir_paths}->{uploads_dir};
 make_path($uploads_dir, $config->{dir_paths}->{filedone_dir}, $config->{dir_paths}->{fileerr_dir});
 
-my $threads_stats = 1;
-my $threads_extract = 1;
-my $threads_munin = 1;
-my $threads_log = 0;
-my $dbh;
-
-use Definitions ':all';
-
 my $inotify = Linux::Inotify2->new;
-
+my $threads_stats = 10;
+my $threads_extract = 10;
+my $threads_munin = 1;
+my $threads_log = 1;
 my $watched_folders;
-my $thread_name = "main";
 
 sub reap_children {
     my $running = shift;
@@ -48,57 +43,78 @@ sub reap_children {
     my $thread_nr;
     my $pid = waitpid(-1, WNOHANG);
     my $exit_status = $? >> 8;
+#     my $q = $exit_status >> 8;
     if ($pid > 0) {
 	LOGDIE  "Unknown pid: $pid.\n".Dumper($running) if ! defined $running->{$pid};
 	$thread_nr = $running->{$pid}->{'thread_nr'};
 	DEBUG "child $pid died, from id ".$running->{$pid}->{'fileid'}." with status=$exit_status: reapead.\n";
 	## less then ERRORS_START should be succes. we keep failed because we don't want to work on them again
-	delete $running->{'0'}->{$running->{$pid}->{'fileid'}} if $exit_status < ERRORS_START && $exit_status > EXIT_STATUS_NA;
+	delete $running->{'0'}->{$running->{$pid}->{'fileid'}} if $exit_status < ERRORS_START && 
+								  $exit_status > EXIT_STATUS_NA && 
+								  $exit_status != EXIT_NO_FILE;
 	delete $running->{$pid};
 	LOGDIE  "Thread number should be positive.\n" if $thread_nr < 1;
 	return $thread_nr;
     }
+    my $hash = $running->{'0'};
+    foreach (keys %$hash){delete $running->{'0'}->{$_} if ($running->{'0'}->{$_}  < time() - 3600)};
     return undef;
 }
 
+sub getFunctionName {
+    my $func = shift;
+    use B qw(svref_2object);
+    my $cv = svref_2object ( $func );
+    return $cv->GV->NAME;
+}
+
+## getwork ($dbh): returns a hash with one element (some unique id). If working for this id failes, it will be ignored in the future
+## dowork ($dbh, $data): returns one of Definitions.pm exitcodes.
+## finishwork ($dbh, $ret, $data);
 sub focker_launcher {
     my ($dowork, $getwork, $finishwork, $max_procs) = @_;
+    return if $max_procs < 1;
     use Time::HiRes qw( usleep tv_interval gettimeofday);
     my $running;
-    $dbh = new SqlWork();
+    $running->{0} = undef;
+    my $dbh = new SqlWork();
     my @thread = (1..$max_procs);
-    use B qw(svref_2object);
-    my $cv = svref_2object ( $dowork );
-    $thread_name = $cv->GV->NAME;
-    $0 = "main_".$thread_name;
-    INFO "Starting forker process $thread_name.\n";
+    $0 = "main_".getFunctionName($getwork);
 
     while (1) {
-	my $data = $getwork->();
-	foreach (keys %$data) {
-	    delete $data->{$_} if defined $running->{0}->{$_};
+	TRACE "$0 Do getwork.\n";
+	my $data = $getwork->($dbh);
+	my ($failed_count, $queue_count, $running_count) = ((scalar keys %{ $running->{0} }), scalar keys %$data, (scalar keys %$running)-1);
+	foreach (sort keys %$data) {
+	    if (defined $running->{0}->{$_}){
+		TRACE "Remove existing id $_\n";
+		delete $data->{$_}; 
+	    };
 	}
-	my $id = (keys %$data)[0]; ## first element 
-	if ((scalar keys %$running) <= $max_procs && defined $id && (! defined $running->{0}->{$id})){
-	    $running->{0}->{$id} = 1;
+	$failed_count -= $running_count;
+
+	TRACE "$0 Got $failed_count failed, $queue_count in queue and $running_count already running (max=$max_procs).\n";
+	my $id = (sort keys %$data)[0]; ## first element from what remains in $data
+	if ($running_count < $max_procs && defined $id){
+	    $running->{0}->{$id} = time();
 	    my $crt = shift @thread;  # get a number
-	    LOGDIE  "We should always have something.\n" if ! defined $crt;
+	    LOGDIE  "$0 we should always have something.\n" if ! defined $crt;
 	    my $pid = fork();
 	    if (! defined ($pid)){
-		LOGDIE  "Can't fork $thread_name with id=$id.\n";
+		LOGDIE  "Can't fork with id=$id.\n";
 	    } elsif ($pid==0) {
-		$0 = "$crt";
-		DEBUG "Starring $thread_name with id=$id\n";
+		$0 = "main_".getFunctionName($dowork);
+		DEBUG "$0 Starring with id=$id\n";
 		$dbh->cloneForFork();
-		my $ret = $dowork->($id, $data->{$id});
-		$finishwork->($ret, $id, $data->{$id});
-		DEBUG "Done $thread_name with status $ret (id=$id).\n";
+		my $ret = $dowork->($dbh, $data->{$id});
+		DEBUG "$0 Done with status $ret (id=$id).\n";
+		$finishwork->($ret, $data->{$id}, $dbh);
+		DEBUG "$0 Finish with status $ret (id=$id).\n";
 		$dbh->disconnect;
 		exit $ret;
 	    }
 	    LOGDIE  "Seems me want to add the same process twice.\n" if defined $running->{$pid};
 	    $running->{$pid}->{'thread_nr'} = $crt;
-# 	    $running->{$pid}->{'filename'} = $filename;
 	    $running->{$pid}->{'fileid'} = $id;
 	}
 
@@ -108,10 +124,11 @@ sub focker_launcher {
 	    push @thread, $thread_nr if defined $thread_nr;
 	} while (defined $thread_nr);
 
-	usleep(100000);
+	usleep(500000);
 # 	sleep 1;
     }
 
+    $dbh->disconnect;
     do {
 	my $thread_nr = reap_children($running);
 	push @thread, $thread_nr;
@@ -143,115 +160,81 @@ sub periodic_checks {
     while (1) {
 	($nr, $string) = (0,"");
 	get_kids($forks, $main_pid);
-	INFO "\n"."*" x 50 ."\n$string"."*" x 50 ."\n";
+	DEBUG "\n"."*" x 50 ."\n$string"."*" x 50 ."\n";
 	sleep 3;
     };
 }
 
 sub extract_getwork {
-    return $dbh->getWorkForExtract(START_EXTRACT);
+    my $dbh = shift;
+    return $dbh->getWorkForExtract(START_EXTRACT, 20);
 }
 
 sub statistics_getwork {
-    return $dbh->getWorkForParsers(START_STATS);
+    my $dbh = shift;
+    return $dbh->getWorkForParsers(START_PARSERS);
 }
 
 sub logparser_getwork {
-    return $dbh->getWorkForLogparser(START_STATS);
+    my $dbh = shift;
+    return $dbh->getWorkForLogparser(START_PARSERS);
 }
 
 sub munin_getwork {
+    my $dbh = shift;
     return $dbh->getWorkForMunin(START_MUNIN);
 }
 
 sub munin_worker {
-    my ($id, $data) = @_;
+    my ($dbh, $data) = @_;
     use Mind_work::MuninWork;
-    my $ret = MuninWork::start($id, $data);
+    my $ret = MuninWork::start($data, $dbh);
     return $ret;
 }
 
 sub munin_finish {
-    my ($ret, $id, $data) = @_;
-    MuninWork::finish($ret, $id, $data);
+    my ($ret, $data, $dbh) = @_;
+    MuninWork::finish($ret, $data, $dbh);
 }
 
 sub statistics_worker {
-    my ($id, $data) = @_;
+    my ($dbh, $data) = @_;
     use Mind_work::ParseStats;
-    my $ret = ParseStats::start($id, $data, $dbh);
+    my $ret = ParseStats::start($data, $dbh);
     return $ret;
 }
 
 sub statistics_finish {
-    my ($ret, $id, $data) = @_;
-    moveFiles($ret, $id, $data);
-    ParseStats::finish($ret, $id, $data);
+    my ($ret, $data, $dbh) = @_;
+    ParseStats::finish($ret, $data, $dbh);
 }
 
 sub extract_worker {
-    my ($id, $data) = @_;
+    my ($dbh, $data) = @_;
     use Mind_work::ExtractFiles;
-    my $ret = ExtractFiles::start($data);
+    my $ret = ExtractFiles::start($data, $dbh);
     return $ret;
 }
 
 sub extract_finish {
-    my ($ret, $id_q, $data) = @_;
-    foreach my $id (keys %$ret){
-	my $status = $ret->{$id}->{return_result};
-	$status = $ret->{$id}->{status} if $ret->{$id}->{status} > ERRORS_START;
-	$status = EXIT_FILE_BAD if $ret->{$id}->{app_name} eq EXIT_STATUS_NA."" || 
-				  $ret->{$id}->{customer_id} eq EXIT_STATUS_NA."" || 
-				  $ret->{$id}->{host_id} eq EXIT_STATUS_NA."" || 
-				  $ret->{$id}->{inserted_in_tablename} eq EXIT_STATUS_NA."" || 
-				  $ret->{$id}->{worker_type} eq EXIT_STATUS_NA."";
-	$dbh->updateFileStatus ($id, $status);
-	moveFiles($status, $id, $ret->{$id}) if $status != $ret->{$id}->{return_result}; ## aka error
-    }
-    ExtractFiles::finish($ret, $id_q, $data);
+    my ($ret, $data, $dbh) = @_;
+    ExtractFiles::finish($ret, $data, $dbh);
 }
 
 sub logparser_worker {
-    my ($id, $data) = @_;
+    my ($dbh, $data) = @_;
     use Mind_work::ParseLogs;
-    my $ret = ParseLogs::start($id, $data, $dbh);
+    my $ret = ParseLogs::start($data, $dbh);
     return $ret;
 }
 
 sub logparser_finish {
-    my ($ret, $id, $data) = @_;
-    moveFiles($ret, $id, $data);
-    ParseLogs::finish($ret, $id, $data);
-}
-
-sub moveFiles {
-    my ($ret, $id, $data) = @_;
-    my $filename = $data->{file_name};
-    unlink $filename if ! (defined $data->{customer_id} && $data->{customer_id} > 0);
-    my $cust_name = $dbh->get_customer_name($data->{customer_id});
-    my $host_name = $dbh->get_host_name($data->{host_id});
-    my $dir_prefix;
-    if ($ret > ERRORS_START) { #error
-	WARN "Returned error $ret for $id = $filename.\n";
-	$dir_prefix = "$config->{dir_paths}->{fileerr_dir}/$cust_name/$host_name/errcode_$ret/";
-    } elsif ($ret > EXIT_STATUS_NA && $ret <= ERRORS_START) { #normal: 
-	DEBUG "Returned success $ret for $id = $filename.\n";
-	$host_name = "deleted" if ! defined $host_name;
-	$dir_prefix = "$config->{dir_paths}->{filedone_dir}/$cust_name/$host_name/";
-    } else {
-	LOGDIE "what is this?: $ret\n";
-    }
-    make_path($dir_prefix);
-    my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
-    my $new_name = "$dir_prefix/$name"."_".MindCommons::get_random."$suffix";
-    DEBUG "Moving $filename to $new_name\n" if -f $filename;
-    move("$filename", $new_name);
-    $dbh->updateFileStatus($id, $ret);
+    my ($ret, $data, $dbh) = @_;
+    ParseLogs::finish($ret, $data, $dbh);
 }
 
 sub addFilesDB {
-    my $file = shift;
+    my ($file, $dbh) = @_;
     if ( -f $file ) {
 	DEBUG "Try to insert file $file.\n";
 	my ($name, $dir, $suffix) = fileparse($file, qr/\.[^.]*/);
@@ -259,17 +242,7 @@ sub addFilesDB {
 	$file_hash->{file_info}->{name} = $file;
 	$file_hash->{file_info}->{md5} = MindCommons::get_file_sha($file);
 	($file_hash->{machine}->{customer}, $file_hash->{machine}->{host}) = $dir =~ m/^$uploads_dir\/*([^\/]+)\/+([^\/]+)\/+$/;
-	if ($name =~ m/^((.*)?(statistics?|info))/i) {
-	    my $table_name = lc($1);
-	    my $app = $2;
-	    my $type = lc($3);
-	    ## fix asc name
-	    $type = "statistics" if $type eq "statistic";
-	    $file_hash->{worker}->{table_name} = $table_name;
-	    $file_hash->{worker}->{app} = $app;
-	    $file_hash->{worker}->{type} = $type;
-	    $dbh->insertFile ($file_hash, START_EXTRACT);
-	}
+	$dbh->insertFile ($file_hash, START_EXTRACT);
     }
 }
 
@@ -288,16 +261,16 @@ sub main_process_worker {
     my ($forks, $pid);
     $forks->{$main_pid} = "main";
     $pid = fork();
-    if (!$pid) {focker_launcher(\&extract_worker, \&extract_getwork, \&extract_finish, $threads_extract); exit 0;};
+    if (!$pid) {INFO "Starting forker process extract.\n";focker_launcher(\&extract_worker, \&extract_getwork, \&extract_finish, $threads_extract); exit 0;};
     $forks->{$pid} = "extract";
     $pid = fork();
-    if (!$pid) {focker_launcher(\&statistics_worker, \&statistics_getwork, \&statistics_finish, $threads_stats); exit 0;};
+    if (!$pid) {INFO "Starting forker process statistics.\n";focker_launcher(\&statistics_worker, \&statistics_getwork, \&statistics_finish, $threads_stats); exit 0;};
     $forks->{$pid} = "statistics";
     $pid = fork();
-    if (!$pid) {focker_launcher(\&logparser_worker, \&logparser_getwork, \&logparser_finish, $threads_log); exit 0;};
+    if (!$pid) {INFO "Starting forker process logparser.\n";focker_launcher(\&logparser_worker, \&logparser_getwork, \&logparser_finish, $threads_log); exit 0;};
     $forks->{$pid} = "logs";
     $pid = fork();
-    if (!$pid) {sleep 5;focker_launcher(\&munin_worker, \&munin_getwork, \&munin_finish, $threads_munin); exit 0;};
+    if (!$pid) {INFO "Starting forker process munin.\n";sleep 2;focker_launcher(\&munin_worker, \&munin_getwork, \&munin_finish, $threads_munin); exit 0;};
     $forks->{$pid} = "munin";
     $pid = fork();
     if (!$pid) {periodic_checks($forks, $main_pid); exit 0;};
@@ -307,9 +280,9 @@ sub main_process_worker {
     DEBUG Dumper($forks);
     use Mind_work::SqlWork;
 
-    $dbh = new SqlWork();
+    my $dbh = new SqlWork();
     assign_watchers($uploads_dir);
-    addFilesDB ($_) foreach (MindCommons::find_files_recursively($uploads_dir));
+    addFilesDB ($_, $dbh) foreach (MindCommons::find_files_recursively($uploads_dir));
 
     while (1) {
 	my @events = $inotify->read;
@@ -323,7 +296,7 @@ sub main_process_worker {
 		DEBUG "Del dir ". $event->fullname . "\n";
 		delete $watched_folders->{$event->fullname};
 	    } elsif (($event->IN_CLOSE_WRITE || $event->IN_MOVED_FROM || $event->IN_MOVED_TO) && -f $event->fullname) {
-		addFilesDB ($event->fullname);
+		addFilesDB ($event->fullname, $dbh);
 	    } elsif ($event->IN_CREATE && -d $event->fullname) {
 		DEBUG "Add dir ".$event->fullname."\n";
 	    }

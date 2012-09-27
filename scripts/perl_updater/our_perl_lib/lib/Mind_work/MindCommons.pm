@@ -5,13 +5,41 @@ use strict;
 
 use File::Path qw(make_path remove_tree);
 # use Digest::MD5 qw(md5_hex);
-# use File::Basename;
-# use File::Copy;
+use File::Basename;
+use File::Copy;
 use File::Find;
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
+use Log::Log4perl qw(:easy);
 
-my $debug = 0;
+# my $debug = 0;
+my $config = xmlfile_to_hash("config.xml");
+use Definitions ':all';
+
+sub moveFiles {
+    my ($ret, $data, $dbh) = @_;
+    my $filename = $data->{file_name};
+    unlink $filename if ! (defined $data->{customer_id} && $data->{customer_id} > 0);
+    my $cust_name = $dbh->get_customer_name($data->{customer_id});
+    my $host_name = $dbh->get_host_name($data->{host_id});
+    my $dir_prefix;
+    if ($ret > ERRORS_START) { #error
+	WARN "Returned error $ret for $filename.\n";
+	$dir_prefix = "$config->{dir_paths}->{fileerr_dir}/$cust_name/$host_name/errcode_$ret/";
+    } elsif ($ret > EXIT_STATUS_NA && $ret <= ERRORS_START) { #normal: 
+	DEBUG "Returned success $ret for $filename.\n";
+	$host_name = "__deleted__" if ! defined $host_name;
+	$dir_prefix = "$config->{dir_paths}->{filedone_dir}/$cust_name/$host_name/";
+    } else {
+	LOGDIE "what is this?: $ret\n";
+    }
+    make_path($dir_prefix);
+    my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
+    my $new_name = "$dir_prefix/$name"."_".get_random()."$suffix";
+    DEBUG "Moving $filename to $new_name\n" if -f $filename;
+    move("$filename", $new_name);
+    $dbh->updateFileColumns($data->{id}, ['status'], [$dbh->getQuotedString($ret)]);
+}
 
 sub get_random {
   return sprintf("%08X", rand(0xFFFFFFFF));
@@ -170,7 +198,7 @@ sub find_files_recursively {
 
 sub get_file_sha {
     my $doc_file = shift;
-    die "Not a file: $doc_file\n" if ! -f $doc_file;
+    LOGDIE "Not a file: $doc_file\n" if ! -f $doc_file;
     use Digest::SHA qw(sha1_hex);
     my $sha = Digest::SHA->new();
     $sha->addfile($doc_file);
@@ -200,7 +228,7 @@ sub get_string_sha {
 # }
 
 sub array_diff {
-    print "-Compute difference and uniqueness.\n" if $debug;
+    TRACE "-Compute difference and uniqueness.\n";
     my ($arr1, $arr2) = @_;
     my %seen = (); my @uniq1 = grep { ! $seen{$_} ++ } @$arr1; $arr1 = \@uniq1;
     %seen = (); my @uniq2 = grep { ! $seen{$_} ++ } @$arr2; $arr2 = \@uniq2;
@@ -215,7 +243,7 @@ sub array_diff {
 	push @{ $count{$element} > 1 ? \@intersection : \@difference }, $element;
 # 	push @difference, $element if $count{$element} <= 1;
     }
-    print "\tdifference done.\n" if $debug;
+    TRACE "\tdifference done.\n";
 
     my $arr1_hash = ();
     $arr1_hash->{$_} = 1 foreach (@$arr1);
@@ -227,7 +255,7 @@ sub array_diff {
 	    push @only_in_arr2, $element;
 	}
     }
-    print "+Compute difference and uniqueness.\n" if $debug;
+    TRACE "+Compute difference and uniqueness.\n";
     return \@only_in_arr1,  \@only_in_arr2,  \@intersection;
 }
 

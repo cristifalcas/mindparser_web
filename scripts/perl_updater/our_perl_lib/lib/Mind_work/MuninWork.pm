@@ -25,41 +25,23 @@ use File::Basename;
 use Log::Log4perl qw(:easy);
 use Definitions ':all';
 
-# use Mind_work::SqlWork;
 use Mind_work::MindCommons;
 my $config = MindCommons::xmlfile_to_hash("config.xml");
-my $db_h;
 my $rate = 300;
 my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
 my $plugins_conf_dir = "$script_path/".$config->{dir_paths}->{plugins_conf_dir_postfix};
-my ($host_id, $stats_table, $customer, $host, $plugin_name, $conf_file, $work_dir, $spoolwriter);
+my ($stats_table, $customer, $host, $plugin_name, $conf_file, $work_dir, $spoolwriter);
 
 # "$Munin::Common::Defaults::MUNIN_CONFDIR"
 # "$Munin::Common::Defaults::MUNIN_SPOOLDIR"
 # "$Munin::Common::Defaults::MUNIN_DBDIR"
 
 sub initVars {
-    my $input = shift;
-    my $hash = $db_h->selectall_hashref(
-			"SELECT a.id,c.name customer,h.name host,h.id host_id, a.inserted_in_tablename tablename, a.app_name appname
-				  FROM $config->{db_config}->{collected_file_table} a,
-					$config->{db_config}->{host_table} h,
-					$config->{db_config}->{cust_table} c
-			WHERE a.id in (". (join ",", @$input).") and h.id=a.host_id and c.id=a.customer_id", 'id');
-    foreach my $key (keys %$hash){
-# print Dumper($key,$hash->{$key});
-	LOGDIE "strange files for munin:".Dumper($hash->{$key}, $host_id, $stats_table, $customer, $host, $plugin_name) 
-	      if ( defined $host_id && $host_id != $hash->{$key}->{host_id} ) ||
-		 ( defined $stats_table && $stats_table ne $hash->{$key}->{tablename} ) ||
-		 ( defined $customer && $customer ne $hash->{$key}->{customer} ) ||
-		 ( defined $host && $host ne $hash->{$key}->{host} ) ||
-		 ( defined $plugin_name && $plugin_name ne lc($hash->{$key}->{appname}) );
-	$host_id = $hash->{$key}->{host_id};
-	$stats_table = $hash->{$key}->{tablename};
-	$customer = $hash->{$key}->{customer};
-	$host = $hash->{$key}->{host};
-	$plugin_name = lc($hash->{$key}->{appname});
-    }
+    my ($input, $dbh) = @_;
+    $plugin_name = $input->{plugin_name};
+    $stats_table = $input->{stats_table};
+    $customer = $dbh->get_customer_name_from_host_id($input->{host_id});
+    $host = $dbh->get_host_name($input->{host_id});
 
     $work_dir = "$config->{dir_paths}->{filetmp_dir}/munin/$customer\_$host\_$plugin_name/";
     rmtree ($work_dir);
@@ -103,19 +85,6 @@ dbdir $work_dir
     close(MYOUTFILE);
 }
 
-sub getColumns {
-    my $table = shift;
-    my ($sth, @columns);
-    $sth = $db_h->prepare("SELECT * FROM $table WHERE 1=0");
-    $sth->execute;
-    @columns = @{$sth->{NAME}}; # or NAME_lc if needed
-    $sth->finish;
-
-    $sth = $db_h->prepare("SELECT * FROM $config->{db_config}->{md5_names_table} WHERE md5 in (". (join ",", map {$db_h->quote($_)} @columns).")");
-    $sth->execute() || LOGDIE "Error $DBI::errstr\n";
-    return $sth->fetchall_hashref('md5');
-}
-
 sub linkRRDFiles {
     my $munin_dbdir = "$Munin::Common::Defaults::MUNIN_DBDIR";
 #     my $plugin_name = shift;
@@ -131,7 +100,7 @@ sub linkRRDFiles {
 # 	    make_path "$work_dir/$customer" || LOGDIE "can't create dir $work_dir/$customer.\n";
 	    foreach my $file (glob("$munin_dbdir/$customer/$host.$customer-$plugin_name*")){
 # 		my ($name,$dir,$suffix) = fileparse($file, qr/\.[^.]*/); 
-		my $timestamp = `rrdtool info $file` || LOGDIE "can't run rrdtool\n";
+		my $timestamp = `rrdtool info $file` || LOGDIE "can't run rrdtool info $file`\n";
 		($timestamp) = grep {m/^last_update/} (split /\n/, $timestamp);
 		$timestamp =~ s/^last_update\s*=\s*//;
 		$last_timestamp = $timestamp + 0 if $timestamp > $last_timestamp || $last_timestamp == 0;
@@ -215,36 +184,36 @@ sub configPlugins {
     return $graph_name;
 }
 
-sub connectDB {
-    $db_h = DBI->connect("DBI:mysql:$config->{db_config}->{db_database}:10.0.0.99:3306", $config->{db_config}->{db_user}, $config->{db_config}->{db_pass},
-	{ ShowErrorStatement => 1,
-          AutoCommit => 1,
-          RaiseError => 1,
-          mysql_use_result => 1,
-          mysql_enable_utf8 => 1,
-	  mysql_auto_reconnect => 1,
-          PrintError => 1, }) || die "Could not connect to database: $DBI::errstr";
-    return $db_h;
-}
+# sub connectDB {
+#     my $db_h = DBI->connect("DBI:mysql:$config->{db_config}->{db_database}:10.0.0.99:3306", $config->{db_config}->{db_user}, $config->{db_config}->{db_pass},
+# 	{ ShowErrorStatement => 1,
+#           AutoCommit => 1,
+#           RaiseError => 1,
+#           mysql_use_result => 1,
+#           mysql_enable_utf8 => 1,
+# 	  mysql_auto_reconnect => 1,
+#           PrintError => 1, }) || die "Could not connect to database: $DBI::errstr";
+#     return $db_h;
+# }
 
 sub start {
-    my ($id, $data) = @_;
-#     INFO "Start munin work using table $stats_table with host id=$host_id, name=$full_hostname\n";
-
-    connectDB;
-    initVars($data);
-    my $colums_name = getColumns($stats_table);
+    my ($data, $dbh) = @_;
+    my $db_h = $dbh->getDBI_handler();
+    initVars($data, $dbh);
+    my $colums_name = $dbh->getColumns($stats_table);
     my $batch_nr_rows = sprintf("%.0f", 20000/(scalar (keys %$colums_name)))+2;
     DEBUG "Retrieving rows in batches of $batch_nr_rows\n";
     my $graph_name = configPlugins($colums_name);
     my $from_time = linkRRDFiles;
     INFO "Start time is $from_time\n";
+return EXIT_STATUS_NA;
+    my $host_id = $data->{host_id};
+    my $total_rows = $db_h->selectrow_array("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp asc");
 
-    my ($total_rows) = $db_h->selectrow_array("SELECT count(*) FROM $stats_table WHERE host_id=$host_id and timestamp>=$from_time order by timestamp asc");
-    return EXIT_NO_ROWS if ! $total_rows;
-    DEBUG "Getting all lines from $stats_table with host $host($host_id), timestamp=$from_time ($total_rows)\n";
+    return SUCCESS_LAST if ! $total_rows;
+    DEBUG "Getting all lines from $stats_table with host $host, timestamp=$from_time ($total_rows)\n";
     my $sth = $db_h->prepare("SELECT * FROM $stats_table WHERE host_id=$host_id and timestamp>? order by timestamp limit ?");
-    $sth->execute(($from_time, $from_time ? $batch_nr_rows : 1)) || LOGDIE "Error $DBI::errstr\n";
+    $sth->execute($from_time, $from_time ? $batch_nr_rows : 1) || LOGDIE "Error $DBI::errstr\n";
 
     my $crt_rows = 0;
     while (my $aref = $sth->fetchall_arrayref({}) ){
@@ -316,12 +285,16 @@ sub start {
     }
     rmtree ($work_dir);
     INFO "Done munin update $stats_table from host=$host\n";
+#     $db_h->disconnect(); 
     return SUCCESS_LAST;
 }
 
 sub finish {
-    my ( $ret, $id, $data ) = @_;
-    my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=$ret WHERE id in (". (join ",", @$data).")") || die "Error $DBI::errstr\n";
+    my ($ret, $data, $dbh) = @_;
+
+# print Dumper($data);
+#     $dbh->updateFileColumns($_, ['status'], [$ret]) foreach (@$data);
+#     my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=$ret WHERE id in (". (join ",", @$data).")") || die "Error $DBI::errstr\n";
 }
 
 # http://munin-monitoring.org/wiki/MultigraphSampleOutput

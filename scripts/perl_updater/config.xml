@@ -1,13 +1,14 @@
 <out>
   <db_config>
-    <collected_file_table>collected_files</collected_file_table>
-    <cust_table>customers</cust_table>
     <db_database>mind_statistics</db_database>
     <db_pass>!0mind_statistics@9</db_pass>
     <db_user>mind_statistics</db_user>
-    <host_table>hosts</host_table>
-    <md5_names_table>md5_col_names</md5_names_table>
-    <stats_template_table>statistics_template</stats_template_table>
+    <collected_file_table>__collected_files</collected_file_table>
+    <cust_table>__customers</cust_table>
+    <host_table>__hosts</host_table>
+    <md5_names_table>__md5_col_names</md5_names_table>
+    <stats_template_table>__statistics_template</stats_template_table>
+    <mind_plugins>__mind_plugins</mind_plugins>
   </db_config>
   <dir_paths>
     <filedone_dir>/var/www/html/mindparser/scripts/done/</filedone_dir>

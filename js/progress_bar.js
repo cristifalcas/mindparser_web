@@ -61,14 +61,14 @@ request_handler = function () {
 		if (request.status === 200) { // and the HTTP status is OK
 			// get progress from the XML node and set progress bar width and innerHTML
 			level = request.responseXML.getElementsByTagName('PROGRESS')[0].firstChild;
-			progress.style.width = progress.innerHTML = level.nodeValue + '%';
+			progress_bar.style.width = progress_bar.innerHTML = level.nodeValue + '%';
 		}
 		else { // if request status is not OK
-			progress.style.width = '100%';
-			progress.innerHTML = 'Error:[' + request.status + ']' + request.statusText;
+			progress_bar.style.width = '100%';
+			progress_bar.innerHTML = 'Error:[' + request.status + ']' + request.statusText;
 		}
-	}
+	} 
 };
 
 
-window.setInterval('send_request()', 1000);
+window.setInterval('send_request()', 1000); 

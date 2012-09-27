@@ -4,8 +4,8 @@ $db_link;
 $db_user = 'mind_statistics';
 $db_pass = '!0mind_statistics@9';
 $db_database = 'mind_statistics';
-$customers_table = 'customers';
-$hosts_table = 'hosts';
+$customers_table = '__customers';
+$hosts_table = '__hosts';
 $customer="";
 $host="";
 
@@ -15,20 +15,19 @@ function connect_db() {
     global $db_link, $db_user, $db_pass, $db_database;
     $db_link = mysql_connect('localhost', $db_user, $db_pass);
     if (! ($db_link && mysql_select_db($db_database, $db_link))) {
-	print 'Could not connect: ' . mysql_error();
+	print 'Could not connect: ' . mysql_error()."</br>";
         exit;
     }
 }
 
-function get_customers() {
-    global $customers_table;
-//     $create_cust_table = "CREATE TABLE IF NOT EXISTS $customers_table
-// 	( id int not null AUTO_INCREMENT,
-// 	name varchar(50) UNIQUE,
-// 	PRIMARY KEY(id))";
-//     mysql_query($create_cust_table) or die(mysql_error());
+function close_db() {
+  global $db_link;
+  mysql_close($db_link);
+}
 
-    $rs = mysql_query("select * from $customers_table;") or print "get_customers: ".mysql_error();
+function get_customers_sql() {
+    global $customers_table;
+    $rs = mysql_query("select * from $customers_table where id>0;") or print "get_customers: ".mysql_error()."</br>";
     while($row = mysql_fetch_array($rs)){
 	$customers[$row['id']] = $row['name'];
     }
@@ -36,20 +35,11 @@ function get_customers() {
     
 }
 
-function get_hosts($customer) {
-    global $hosts_table;
+function get_hosts_sql($customer) {
+    global $hosts_table, $customers_table;
     $machines = array();
-//     $create_cust_table = "CREATE TABLE IF NOT EXISTS $hosts_table
-// 	( id int not null AUTO_INCREMENT,
-// 	customer_id int,
-// 	name varchar(50),
-// 	ip varchar(50),
-// 	unique index(customer_id, name),
-// 	PRIMARY KEY(id),
-// 	FOREIGN KEY (customer_id) REFERENCES customers(id) )";
-//     mysql_query($create_cust_table) or die(mysql_error());
-
-    $rs = mysql_query("select * from $hosts_table where customer_id in (select id from customers where name='$customer');") or print "get_hosts: ".mysql_error();
+    $query = "select * from $hosts_table where customer_id in (select id from $customers_table where name='$customer')";
+    $rs = mysql_query($query) or print "get_hosts: $query".mysql_error()."</br>";
     while($row = mysql_fetch_array($rs)){
 	$machines[$row['id']] = $row['name'];
     }
@@ -84,9 +74,9 @@ function generateMenu() {
 <ul class="menu" id="menu">
 	<li><a class="menulink">Select Customer</a>
 		<ul>';
-    $all_customers = get_customers();
+    $all_customers = get_customers_sql();
     foreach ($all_customers as $cust) {
-	$all_hosts = get_hosts($cust);
+	$all_hosts = get_hosts_sql($cust);
 
 	if( !sizeof($all_hosts)){ continue;};
 	$html .= "
@@ -105,12 +95,9 @@ function generateMenu() {
     $html .= '
 		</ul>
 	</li>
-</ul>
+</ul> 
 </form>
-<script type="text/javascript">
-	var menu=new menu.dd("menu");
-	menu.init("menu","menuhover");
-</script>
+<script type="text/javascript">	var menu=new menu.dd("menu");menu.init("menu","menuhover");</script>
 <br/><br/><br/><br/>';
     return $html;
 }
@@ -121,25 +108,21 @@ function get_header () {
     <head>
         <meta charset="utf-8" />
         <title>Statistics graphs</title>
+
+	<link rel="stylesheet" href="css/progress_bar.css">
         <script type="text/javascript" src="js/progress_bar.js"></script>
-        
-	<script type="text/javascript" src="js/script_menu.js"></script>
+	<link rel="stylesheet" href="css/dropdown_menu.css">
+	<script type="text/javascript" src="js/dropdown_menu.js"></script>
+
 	<!-- Bootstrap CSS Toolkit styles -->
 	<!-- <link rel="stylesheet" href="http://blueimp.github.com/cdn/css/bootstrap.min.css"> -->
 	<link rel="stylesheet" href="css/bootstrap.css">
-	<!-- Bootstrap styles for responsive website layout, supporting different screen sizes -->
-	<!-- <link rel="stylesheet" href="http://blueimp.github.com/cdn/css/bootstrap-responsive.min.css"> -->
-	<link rel="stylesheet" href="css/bootstrap-responsive.css">
-	<!-- Bootstrap CSS fixes for IE6 -->
-	<!--[if lt IE 7]><link rel="stylesheet" href="http://blueimp.github.com/cdn/css/bootstrap-ie6.min.css"><![endif]-->
-	<!-- Bootstrap Image Gallery styles -->
-	<!-- <link rel="stylesheet" href="http://blueimp.github.com/Bootstrap-Image-Gallery/css/bootstrap-image-gallery.min.css"> -->
-	<link rel="stylesheet" href="css/bootstrap-image-gallery.css">
 	<!-- CSS to style the file input field as button and adjust the Bootstrap progress bars -->
 	<link rel="stylesheet" href="css/jquery.fileupload-ui.css">
 	<!-- Shim to make HTML5 elements usable in older Internet Explorer versions -->
 	<!--[if lt IE 9]><script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
-	<!-- Generic page styles -->
+
+	<!-- Generic page styles last, to let bootstrap do what it wants and overwrite what we want -->
 	<link rel="stylesheet" href="css/style.css">
     </head>
     <body>';
@@ -147,22 +130,15 @@ function get_header () {
 
 function get_footer() {
     return '
+
 	<!-- <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script> -->
-	<script src="js/web/jquery-1.7.2.js"></script>
+	<script src="js/web/jquery-1.8.1.js"></script>
 	<!-- The jQuery UI widget factory, can be omitted if jQuery UI is already included -->
 	<script src="js/vendor/jquery.ui.widget.js"></script>
 	<!-- The Templates plugin is included to render the upload/download listings -->
 	<!-- <script src="http://blueimp.github.com/JavaScript-Templates/tmpl.min.js"></script> -->
 	<script src="js/web/tmpl.js"></script>
-	<!-- The Load Image plugin is included for the preview images and image resizing functionality -->
-	<!-- <script src="http://blueimp.github.com/JavaScript-Load-Image/load-image.min.js"></script> -->
-	<script src="js/web/load-image.js"></script>
-	<!-- The Canvas to Blob plugin is included for image resizing functionality -->
-	<!-- <script src="http://blueimp.github.com/JavaScript-Canvas-to-Blob/canvas-to-blob.min.js"></script> -->
-	<script src="js/web/canvas-to-blob.js"></script>
-	<!-- Bootstrap JS and Bootstrap Image Gallery are not required, but included for the demo -->
-	<!-- <script src="http://blueimp.github.com/cdn/js/bootstrap.min.js"></script> -->
-	<!-- <script src="http://blueimp.github.com/Bootstrap-Image-Gallery/js/bootstrap-image-gallery.min.js"></script> -->
+
 	<!-- The Iframe Transport is required for browsers without support for XHR file uploads -->
 	<script src="js/jquery.iframe-transport.js"></script>
 	<!-- The basic File Upload plugin -->
@@ -181,4 +157,5 @@ function get_footer() {
 </html>';
 }
 
-?>
+
+?> 

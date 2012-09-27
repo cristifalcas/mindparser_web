@@ -1,19 +1,10 @@
 @charset 'UTF-8';
-
-body {margin:25px; font:11px Verdana,Arial; background:#eee;}
-ul.menu {list-style:none; margin:0; padding:0}
-ul.menu * {margin:0; padding:0}
-ul.menu a {display:block; color:#000; text-decoration:none}
-ul.menu li {position:relative; float:left; margin-right:2px}
-ul.menu ul {position:absolute; top:26px; left:0; background:#d1d1d1; display:none; opacity:0; list-style:none}
-ul.menu ul li {position:relative; border:1px solid #aaa; border-top:none; width:148px; margin:0}
-ul.menu ul li a {display:block; padding:3px 7px 5px; background-color:#d1d1d1}
-ul.menu ul li a:hover {background-color:#c5c5c5}
-ul.menu ul ul {left:148px; top:-1px}
-ul.menu .menulink {border:1px solid #aaa; padding:5px 7px 7px; font-weight:bold; background:url(../img/header.gif); width:134px}
-ul.menu .menulink:hover, ul.menu .menuhover {background:url(../img/header_over.gif)}
-ul.menu .sub {background:#d1d1d1 url(../img/arrow.gif) 136px 8px no-repeat}
-ul.menu .topline {border-top:1px solid #aaa}
+/*common*/
+body {
+    margin:25px; 
+    font:11px Verdana,Arial; 
+    background:#eee;
+}
 
 .block {
    font-size: 14px;
@@ -23,6 +14,21 @@ ul.menu .topline {border-top:1px solid #aaa}
    border-left: 5px solid #eeeeee;
 }
 
+/*footer*/
+/*html, body {
+    height: 100%;
+}
+.wrapper {
+    min-height: 100%;
+    height: auto !important;
+    height: 100%;
+    margin: 0 auto -80px;
+}
+.footer, .push {
+    height: 80px; 
+}*/
+
+/* editor */
 .me_styled-select_edit select {
    background: transparent;
    overflow: hidden;
@@ -47,60 +53,3 @@ ul.menu .topline {border-top:1px solid #aaa}
   padding-top: 2px;*/
 }
 
-/* progress bar at the bottom*/
-html, body {
-    height: 100%;
-}
-
-.wrapper {
-    min-height: 100%;
-    height: auto !important;
-    height: 100%;
-    margin: 0 auto -80px; /* the bottom margin is the negative value of the footer's height */
-}
-.footer, .push {
-    height: 80px; /* .push must be the same height as .footer */
-}
-
-
-
-
-
-
-
-
-
-
-/* green button - start */
-.green {
-	color: white;
-	background-color: #41A128;
-	border-width: 1px;
-}
-
-/* blue button - stop */
-.blue {
-	color: white;
-	background-color: #6A93D4;
-	border-width: 1px;
-}
-
-/* progress container */
-div#progress_container {
-	border: 6px double #ccc; 
-	width: 200px; 
-	margin: 0px;
-	padding: 0px;
-	text-align: left;
-}
-
-/* progress bar */
-div#progress {
-	color: white;
-	background-color: #FF8D40; 
-	height: 12px;
-	padding-bottom: 2px;
-	font-size: 12px;
-	text-align: center;
-	overflow: hidden;
-} 
