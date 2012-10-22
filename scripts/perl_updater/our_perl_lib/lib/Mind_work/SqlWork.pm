@@ -39,7 +39,6 @@ sub insertFile {
     TRACE "Add to db file $file_hash->{file_info}->{name} with status $status.\n";
     my $cust_id = $self->get_customer_id($file_hash->{machine}->{customer}) || EXIT_STATUS_NA;
     my $host_id = $self->get_host_id($file_hash->{machine}->{host}, $cust_id) || EXIT_STATUS_NA;
-    my $table_name = EXIT_STATUS_NA;
 
     $db_h->do("INSERT INTO $config->{db_config}->{collected_file_table} 
 	    (customer_id,
@@ -51,12 +50,39 @@ sub insertFile {
 	     status)
 	VALUES (
 	    $cust_id, 
-	    $host_id,
-	    -1,
+	    $host_id,".
+	    EXIT_STATUS_NA.",
 	    ".$db_h->quote($file_hash->{file_info}->{name}).", 
 	    ".$db_h->quote($file_hash->{file_info}->{md5}).", 
 	    $file_hash->{file_info}->{size},
 	    $status)") || die "Error $DBI::errstr\n";
+}
+
+sub increasePluginQueue {
+    my ($self, $plugin_id) = @_;
+    $db_h->do("update $config->{db_config}->{plugins_table} 
+		      set files_queue=IFNULL(files_queue, 0) + 1 WHERE id=$plugin_id")
+	  || die "Error $DBI::errstr\n";
+}
+
+sub decreasePluginQueue {
+    my ($self, $plugin_id) = @_;
+    $db_h->do("update $config->{db_config}->{plugins_table} 
+		      set files_queue=files_queue - 1 WHERE id=$plugin_id")
+	  || die "Error $DBI::errstr\n";
+}
+
+sub nulifyPluginQueue {
+    my ($self, $plugin_id) = @_;
+    $db_h->do("update $config->{db_config}->{plugins_table} 
+		      set files_queue=NULL WHERE id=$plugin_id")
+	  || die "Error $DBI::errstr\n";
+}
+
+sub getPluginQueue {
+    my ($self, $plugin_id) = @_;
+    my $res = $db_h->selectrow_arrayref("select id from $config->{db_config}->{plugins_table} WHERE id=$plugin_id") || die "Error $DBI::errstr\n";
+    return  $res->[0];
 }
 
 sub updateFileColumns {
@@ -69,10 +95,10 @@ sub updateFileColumns {
 	TRACE "update file_id=$fileid: $columns->[$index]=$values->[$index]\n";
 	push @txt, "$columns->[$index] = $values->[$index]";
     }
-    my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set ".(join ", ", @txt)." WHERE id=$fileid") || die "Error $DBI::errstr\n";
+    $db_h->do("update $config->{db_config}->{collected_file_table} set ".(join ", ", @txt)." WHERE id=$fileid") || die "Error $DBI::errstr\n";
 }
 
-sub insertRowsDB {
+sub insertRowsTable {
     my ($self, $table_name, $cols, @vals) = @_;
     LOGDIE "We can't insert those: ".Dumper($table_name, $cols, @{ $vals[0] }) if scalar @$cols != scalar @{ $vals[0] };
     $_ = join ",", @$_ foreach @vals;
@@ -97,6 +123,7 @@ sub cloneForFork {
 
 sub getIDUsed {
     my ($self, $table_name, $cols, $vals) = @_;
+    LOGDIE "Not good (cols nr <> vals nr)\n" if scalar @$cols != scalar @$vals;
     my @sel;
     push @sel, "$_=".(shift @$vals) foreach @$cols;
     my $res = $db_h->selectrow_arrayref("select id from $table_name where ".(join " and ", @sel)) || die "Error $DBI::errstr\n";
@@ -285,14 +312,13 @@ sub get_file_name {
 }
 
 sub get_md5_names {
-    my ($self, @arr) = @_;
+    my ($self, $arr) = @_;
     my $existing = $db_h->selectall_hashref("select * from $config->{db_config}->{md5_names_table}", 'name');
 
     my $res;
-    foreach (@arr){
-	next if $_ eq 'id' || $_ eq 'file_id' || $_ eq 'timestamp';
+    foreach (@$arr){
+# 	next if $_ eq 'id' || $_ eq 'file_id' || $_ eq 'host_id' || $_ eq 'timestamp' || $_ eq 'group_by';
 	LOGDIE "ce ma fac cu $_?\n" if ! defined $existing->{$_};
-# 	$db_h->do("INSERT IGNORE INTO $config->{db_config}->{md5_names_table} (md5, name) VALUES ('$sha1_hash->{$_}', '$_')") || die "Error $DBI::errstr\n";
 	$res->{$_} = $existing->{$_}->{md5};
     }
     return $res;
@@ -300,7 +326,7 @@ sub get_md5_names {
 
 sub getPluginInfo {
     my ($self, $file_id) = @_;
-    my $hash_ref = $db_h->selectall_hashref("select b.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{mind_plugins} b where a.id=$file_id and b.id=a.plugin_id", 'id');
+    my $hash_ref = $db_h->selectall_hashref("select b.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{plugins_table} b where a.id=$file_id and b.id=a.plugin_id", 'id');
     LOGDIE "Too many rows returned:".Dumper($hash_ref) if scalar (keys %$hash_ref) != 1;
     return $hash_ref->{(keys %$hash_ref)[0]};
 }
@@ -318,22 +344,6 @@ sub getColumns {
     return $sth->fetchall_hashref('md5');
 }
 
-sub set_info_for_munin {
-    my ($self, $hash) = @_;
-#     my $err = $db_h->do("INSERT IGNORE INTO $config->{db_config}->{plugins_table} 
-# 		      (host_id, plugin_name, stats_table) VALUES (
-# 		      $hash->{host_id}, ".
-# 		      $db_h->quote(lc($hash->{app_name})).", ".
-# 		      $db_h->quote($hash->{inserted_in_tablename}).")");
-#     my $query = "select id from $config->{db_config}->{plugins_table} where 
-# 			host_id=$hash->{host_id} and 
-# 			plugin_name=".$db_h->quote(lc($hash->{app_name}))." and 
-# 			stats_table=".$db_h->quote($hash->{inserted_in_tablename});
-#     my ($plugin_id) = @{ $db_h->selectrow_arrayref($query) };
-# print Dumper($hash, $plugin_id);die;
-#     $self->updateFileColumns( $fileid, ['plugin_id'], $values);
-}
-
 sub add_new_columns {
     my ($self, $table_name, $arr) = @_;
     DEBUG "Acquiring lock\n";
@@ -347,7 +357,7 @@ sub add_new_columns {
 	$db_h->do("INSERT IGNORE INTO $config->{db_config}->{md5_names_table} (md5, name) VALUES ('$_', '$sha1_hash->{$_}')");
     }
     my $columns_e = getColumnList($self, $table_name);
-    my $md5_columns = ['id', 'file_id', 'timestamp', keys %$sha1_hash];
+    my $md5_columns = ['file_id', 'timestamp', keys %$sha1_hash];
     my ($only_in_arr1, $only_in_arr2, $intersection) = MindCommons::array_diff( $md5_columns, $columns_e);
 
     while (my ($index, $sha1) = each @$only_in_arr1) {
@@ -381,6 +391,11 @@ sub getWorkForMunin {
 # 	}
     my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{collected_file_table} where status=$status", ['host_id', 'plugin_id', 'id']);
 return;
+# connect --url "https://localhost/api" --user "admin@internal" --password 'admin1234._'
+# umask 0077; 
+# MYTMP="$(mktemp -t ovirt-XXXXXXXXXX)"; 
+# trap "chmod -R u+rwX \"${MYTMP}\" > /dev/null 2>&1; rm -fr \"${MYTMP}\" > /dev/null 2>&1" 0; 
+# rm -fr "${MYTMP}" && mkdir "${MYTMP}" && tar -C "${MYTMP}" --no-same-permissions -o -x && "${MYTMP}"/setup -c 'ssl=true;management_port=54321' -O 'acasa' -t 2012-10-19T08:54:06  -S /tmp/ovirt-id_rsa_131ae4c2-7952-4c79-a89e-3aab346834ea -p 80 -b  -B ovirtmgmt  http://localhost:80/Components/vds/ http://localhost:80/Components/vds/ localhost 131ae4c2-7952-4c79-a89e-3aab346834ea False
     my $ret;
     foreach my $tables (keys %$hash){
 	my $host = $hash->{$tables};
@@ -415,29 +430,40 @@ return;
     }
     return $ret;
 }
-## per host_id, to speed file detection (1.8s vs 0.4)
+
 sub getWorkForExtract {
-    my ($self, $status, $nr) = @_;
-    my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{collected_file_table} where status=$status and host_id>0 and customer_id>0 limit $nr", 'id');
-#     forea
+    my ($self, $status) = @_;
+    my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{collected_file_table} where status=$status and host_id>0 and customer_id>0", 'id');
+    $self->removeDuplicatePaths($hash);
     TRACE "Got ".(scalar keys %$hash )." files for extract.\n" if scalar keys %$hash;
-    my $dir_hash;
-    $dir_hash->{$hash->{$_}->{host_id}}->{$_} = $hash->{$_} foreach (keys %$hash);
-    return $dir_hash;
+    return $hash;
 }
 
-sub getWorkForParsers {
+sub getWorkForStatsParsers {
     my ($self, $status) = @_;
-    my $hash = $db_h->selectall_hashref("select a.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{mind_plugins} b where status=$status and a.plugin_id=b.id and b.worker_type='statistics'", 'id');
+    my $hash = $db_h->selectall_hashref("select a.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{plugins_table} b where a.status=$status and a.plugin_id=b.id and b.worker_type='statistics'", 'id');
     $self->removeDuplicatePaths($hash);
+# print Dumper("qqq",keys %$hash,"www");
+    foreach (keys %$hash) {
+	$hash->{$_}->{plugin_info} = $self->getPluginInfo($_);
+	$hash->{$_}->{customer_name} = $self->get_customer_name($hash->{$_}->{customer_id});
+	$hash->{$_}->{host_name} = $self->get_host_name($hash->{$_}->{host_id});
+    }
+
     TRACE "Got ".(scalar keys %$hash )." files for stats parser.\n" if scalar keys %$hash;
     return $hash;
 }
 
 sub getWorkForLogparser {
     my ($self, $status) = @_;
-    my $hash = $db_h->selectall_hashref("select a.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{mind_plugins} b where status=$status and a.plugin_id=b.id and b.worker_type='logs'", 'id');
+    my $hash = $db_h->selectall_hashref("select a.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{plugins_table} b where status=$status and a.plugin_id=b.id and b.worker_type='logs'", 'id');
     $self->removeDuplicatePaths($hash);
+    foreach (keys %$hash) {
+	$hash->{$_}->{plugin_info} = $self->getPluginInfo($_);
+	$hash->{$_}->{customer_name} = $self->get_customer_name($hash->{$_}->{customer_id});
+	$hash->{$_}->{host_name} = $self->get_host_name($hash->{$_}->{host_id});
+    }
+
     TRACE "Got ".(scalar keys %$hash )." files for log parser.\n" if scalar keys %$hash;
     return $hash;
 }
@@ -446,9 +472,9 @@ sub removeDuplicatePaths {
     my ($self, $hash) = @_;
     my $paths;
     foreach my $key (keys %$hash) {
-	if (defined $paths->{$hash->{$key}->{file_name}}) {
+	if (defined $paths->{$hash->{$key}->{file_name}} && -f $hash->{$key}->{file_name}) {
 	    TRACE "delete $key if we still have the file\n";
-	    delete $hash->{$key} if -f $paths->{$hash->{$key}->{file_name}};
+	    delete $hash->{$key};
 	} else {
 	    $paths->{$hash->{$key}->{file_name}} = 1;
 	}

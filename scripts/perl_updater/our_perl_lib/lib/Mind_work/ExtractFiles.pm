@@ -17,20 +17,18 @@ use Definitions ':all';
 my $config = MindCommons::xmlfile_to_hash("config.xml");
 
 sub extract_file {
-    my $filename = shift;
+    my ($filename, $flm) = @_;
+    INFO "Trying to extract $filename\n";
 # use Time::HiRes qw( usleep tv_interval gettimeofday);
 # my $t0 = [gettimeofday];
 
     return EXIT_NO_FILE if ! -f $filename;
 
-    my $flm = File::LibMagic->new();
+#     my $flm = File::LibMagic->new();
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
     my $mime_type = $flm->checktype_filename($filename);
 # WARN Dumper(tv_interval($t0));
-    my $filetmp_dir = $config->{dir_paths}->{filetmp_dir};
-    make_path($filetmp_dir);
 
-    DEBUG "Trying to extract $filename\n";
     if ($mime_type eq 'text/plain; charset=us-ascii') {
 	if ( $suffix ne ".log"){
 	  DEBUG "Rename $filename to log.\n";
@@ -67,7 +65,7 @@ sub extract_file {
     }
     ## we have only archives now
     my $ae = Archive::Extract->new( archive => $filename );
-    my $tmp_dir = "$filetmp_dir/".MindCommons::get_random;
+    my $tmp_dir = "$config->{dir_paths}->{filetmp_dir}/".MindCommons::get_random;
     make_path($tmp_dir);
     DEBUG "Extracting file $filename to $tmp_dir\n";
     eval {$ae->extract( to => $tmp_dir ) or LOGDIE  $ae->error;};
@@ -75,12 +73,13 @@ sub extract_file {
 	ERROR "Error in extract for $filename (mime: $mime_type): $@\n";
 	return EXIT_EXTR_ERR;
     }
-    DEBUG "Extracted files from $filename to $tmp_dir:\n".Dumper($ae->files);
+    TRACE "Extracted files from $filename to $tmp_dir:\n".Dumper($ae->files);
+    ## move extracted files back
     foreach (MindCommons::find_files_recursively($tmp_dir)){
 	next if ! -f $_;
 	my ($name_e,$dir_e,$suffix_e) = fileparse($_, qr/\.[^.]*/);
 	my $new_name = "$dir/$name_e"."_".MindCommons::get_random."$suffix_e";
-	DEBUG "Moving $_ to $new_name.\n";
+	TRACE "Moving $_ to $new_name.\n";
 	move("$_", $new_name) || LOGDIE "Can't rename file $_: $!\n";
     }
     remove_tree($tmp_dir) || LOGDIE "Can't delete dir $tmp_dir: $!\n";
@@ -88,46 +87,40 @@ sub extract_file {
     return EXIT_NO_FILE;
 }
 
-sub start {
-    my ($hash, $dbh) = @_;
-    foreach my $id (keys %$hash){
-	my $ret = extract_file($hash->{$id}->{file_name});
-	if ($ret == START_PARSERS) {
-# 	    my $filename = extract_file($hash->{$id}->{file_name};
-	    my ($name, $dir, $suffix) = fileparse($hash->{$id}->{file_name}, qr/\.[^.]*/);
-	    if ($name =~ m/^((.*?)(statistics?|info))/i) {
-		my $table_name = lc($1)."_$hash->{$id}->{host_id}";
-		my $app = $2;
-		my $type = lc($3);
-		LOGDIE "Wrong table name: $table_name" if $table_name !~ m/^[a-z0-9_]+$/i;
-		my $plugin_name = lc($app);
-		## fix asc name
-		$type = "statistics" if $type eq "statistic";
-		my $columns = ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name'];
-		my $values = [$hash->{$id}->{customer_id}, $hash->{$id}->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name)];
-		$dbh->insertRowsDB ($config->{db_config}->{mind_plugins}, $columns, $values);
-		my $plugin_id = $dbh->getIDUsed ($config->{db_config}->{mind_plugins}, $columns, $values);
-		$dbh->updateFileColumns ($id, ['plugin_id'], [$plugin_id]);
-	    } else {
-		$ret = EXIT_STATUS_NA;  ## we don't know what to do with this
-	    }
+sub run {
+    my ($data, $dbh, $flm) = @_;
+    $data->{customer_name} = $dbh->get_customer_name($data->{customer_id});
+    $data->{host_name} = $dbh->get_host_name($data->{host_id});
+
+    my $filename = $data->{file_name};
+    my $ret = extract_file($filename, $flm);
+    if ($ret == START_PARSERS) {
+	my ($name, $dir, $suffix) = fileparse($data->{file_name}, qr/\.[^.]*/);
+	if ($name =~ m/^((.*?)(statistics?|info))/i) {
+	    my $table_name = lc($1)."_$data->{host_id}";
+	    my $app = $2;
+	    my $type = lc($3);
+	    LOGDIE "Wrong table name: $table_name" if $table_name !~ m/^[a-z0-9_]+$/i;
+	    my $plugin_name = lc($app);
+	    ## fix asc name
+	    $type = "statistics" if $type eq "statistic";
+	    my $columns = ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name'];
+	    my $values = [$data->{customer_id}, $data->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name)];
+
+	    ## add new plugin row
+	    $dbh->insertRowsTable ($config->{db_config}->{plugins_table}, $columns, $values);
+	    ## retrieve the pluginid
+	    my $plugin_id = $dbh->getIDUsed ($config->{db_config}->{plugins_table}, $columns, $values);
+	    ## set the new pluginid to the file
+	    $dbh->updateFileColumns ($data->{id}, ['plugin_id'], [$plugin_id]);
+	    $dbh->increasePluginQueue($plugin_id);
+	} else {
+	    $ret = EXIT_STATUS_NA;  ## we don't know what to do with this, so we ignore it
 	}
-
-	$hash->{$id}->{return_result} = $ret;
     }
-    return START_PARSERS;
-}
-
-sub finish {
-  my ($ret, $data, $dbh) = @_;
-    foreach my $id (keys %$data){
-	my $status = $data->{$id}->{return_result};
-	$status = $data->{$id}->{status} if $data->{$id}->{status} > ERRORS_START;
-	$status = EXIT_FILE_BAD if $data->{$id}->{customer_id} eq EXIT_STATUS_NA."" || 
-				  $data->{$id}->{host_id} eq EXIT_STATUS_NA."";
-	$dbh->updateFileColumns ($id, ['status'], [$status]);
-	MindCommons::moveFiles($status, $data->{$id}, $dbh) if $status != $data->{$id}->{return_result}; ## aka error
-    }
+    $dbh->updateFileColumns($data->{id}, ['status'], [$ret]);
+    ## we always return success
+    return 0;
 }
 
 return 1;

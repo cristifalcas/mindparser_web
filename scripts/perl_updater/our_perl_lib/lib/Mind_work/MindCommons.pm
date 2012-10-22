@@ -12,34 +12,8 @@ use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use Log::Log4perl qw(:easy);
 
-# my $debug = 0;
 my $config = xmlfile_to_hash("config.xml");
 use Definitions ':all';
-
-sub moveFiles {
-    my ($ret, $data, $dbh) = @_;
-    my $filename = $data->{file_name};
-    unlink $filename if ! (defined $data->{customer_id} && $data->{customer_id} > 0);
-    my $cust_name = $dbh->get_customer_name($data->{customer_id});
-    my $host_name = $dbh->get_host_name($data->{host_id});
-    my $dir_prefix;
-    if ($ret > ERRORS_START) { #error
-	WARN "Returned error $ret for $filename.\n";
-	$dir_prefix = "$config->{dir_paths}->{fileerr_dir}/$cust_name/$host_name/errcode_$ret/";
-    } elsif ($ret > EXIT_STATUS_NA && $ret <= ERRORS_START) { #normal: 
-	DEBUG "Returned success $ret for $filename.\n";
-	$host_name = "__deleted__" if ! defined $host_name;
-	$dir_prefix = "$config->{dir_paths}->{filedone_dir}/$cust_name/$host_name/";
-    } else {
-	LOGDIE "what is this?: $ret\n";
-    }
-    make_path($dir_prefix);
-    my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
-    my $new_name = "$dir_prefix/$name"."_".get_random()."$suffix";
-    DEBUG "Moving $filename to $new_name\n" if -f $filename;
-    move("$filename", $new_name);
-    $dbh->updateFileColumns($data->{id}, ['status'], [$dbh->getQuotedString($ret)]);
-}
 
 sub get_random {
   return sprintf("%08X", rand(0xFFFFFFFF));
@@ -71,70 +45,6 @@ sub find_files_recursively {
     find(sub{push @files, $File::Find::name},$path);;
     return @files;
 }
-
-# sub copy_dir {
-#     my ($from_dir, $to_dir) = @_;
-#     opendir my($dh), $from_dir or die "Could not open dir '$from_dir': $!";
-#     for my $entry (readdir $dh) {
-# #         next if $entry =~ /$regex/;
-#         my $source = "$from_dir/$entry";
-#         my $destination = "$to_dir/$entry";
-#         if (-d $source) {
-# 	    next if $source =~ "\.?\.";
-#             mkdir $destination or die "mkdir '$destination' failed: $!" if not -e $destination;
-#             copy_dir($source, $destination);
-#         } else {
-#             copy($source, $destination) or die "copy failed: $source to $destination $!";
-#         }
-#     }
-#     closedir $dh;
-#     return;
-# }
-# 
-# sub move_dir {
-#     my ($src, $trg) = @_;
-#     die "\tTarget $trg is a file.\n" if (-f $trg);
-#     makedir("$trg", 1) if (! -e $trg);
-#     opendir(DIR, "$src") || die("Cannot open directory $src.\n");
-#     my @files = grep { (!/^\.\.?$/) } readdir(DIR);
-#     closedir(DIR);
-#     foreach my $file (@files){
-# 	move("$src/$file", "$trg/$file") or die "Move file $src/$file to $trg failed: $!\n";
-#     }
-#     remove_tree("$src") || die "Can't remove dir $src.\n";
-# }
-
-# sub write_file {
-#     my ($path,$text, $remove) = @_;
-#     $remove = 0 if not defined $remove;
-#     my ($name,$dir,$suffix) = fileparse($path, qr/\.[^.]*/);
-#     add_to_remove("$dir/$name$suffix", "file") if $remove ne 0;
-#     print "\tWriting file $name$suffix.\t". get_time_diff() ."\n";
-#     open (FILE, ">$path") or die "at generic write can't open file $path for writing: $!\n";
-#     ### don't decode/encode to utf8
-#     print FILE "$text";
-#     close (FILE);
-# }
-
-# sub makedir {
-#     my ($dir, $no_extra) = @_;
-#     my ($name_user, $pass_user, $uid_user, $gid_user, $quota_user, $comment_user, $gcos_user, $dir_user, $shell_user, $expire_user) = getpwnam scalar getpwuid $<;
-#     my $err;
-#     if (defined $no_extra) {
-# 	make_path ("$dir", {error => \$err});
-#     } else {
-# 	make_path ("$dir", {owner=>"$name_user", group=>"nobody", error => \$err});
-#     }
-#     if (@$err) {
-# 	for my $diag (@$err) {
-# 	    my ($file, $message) = %$diag;
-# 	    if ($file eq '') { print "general error: $message.\n"; }
-# 	    else { print "problem unlinking $file: $message.\n"; }
-# 	}
-# 	die "Can't make dir $dir: $!.\n";
-#     }
-#     die "Dir not created.\n" if ! -d $dir;
-# }
 
 # sub normalize_text {
 #     my $str = shift;
@@ -182,20 +92,6 @@ sub find_files_recursively {
 #     return Encode::encode( 'utf8', $str );  ;
 # }
 
-# sub get_string_md5 {
-#     my $text = shift;
-#     return md5_hex($text);
-# }
-# 
-# sub get_file_md5 {
-#     my $doc_file = shift;
-#     open(FILE, $doc_file) or die "Can't open '$doc_file': $!\n";
-#     binmode(FILE);
-#     my $doc_md5 = Digest::MD5->new->addfile(*FILE)->hexdigest;
-#     close(FILE);
-#     return $doc_md5;
-# }
-
 sub get_file_sha {
     my $doc_file = shift;
     LOGDIE "Not a file: $doc_file\n" if ! -f $doc_file;
@@ -210,22 +106,6 @@ sub get_string_sha {
     use Digest::SHA qw(sha1_hex);
     return sha1_hex($text);
 }
-
-# sub capitalize_string {
-#     my ($str,$type) = @_;
-#     if ($type eq "first") {
-# 	$str =~ s/\b(\w)/\U$1/g;
-#     } elsif ($type eq "all") {
-# 	$str =~ s/([\w']+)/\u\L$1/g;
-#     } elsif ($type eq "small") {
-# 	$str =~ s/([\w']+)/\L$1/g;
-#     } elsif ($type eq "onlyfirst") {
-# 	$str =~ s/\b(\w)/\U$1/;
-#     } else {
-# 	die "Capitalization: first (first letter is capital and the rest remain the same), small (all letters to lowercase) or all (only first letter is capital, and the rest are lowercase).\n";
-#     }
-#     return $str;
-# }
 
 sub array_diff {
     TRACE "-Compute difference and uniqueness.\n";

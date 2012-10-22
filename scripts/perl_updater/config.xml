@@ -8,7 +8,7 @@
     <host_table>__hosts</host_table>
     <md5_names_table>__md5_col_names</md5_names_table>
     <stats_template_table>__statistics_template</stats_template_table>
-    <mind_plugins>__mind_plugins</mind_plugins>
+    <plugins_table>__mind_plugins</plugins_table>
   </db_config>
   <dir_paths>
     <filedone_dir>/var/www/html/mindparser/scripts/done/</filedone_dir>

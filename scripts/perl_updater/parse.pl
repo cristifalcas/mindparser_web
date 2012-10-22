@@ -13,9 +13,9 @@ use File::Path qw(make_path remove_tree);
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init({ level   => $DEBUG,
+Log::Log4perl->easy_init({ level   => $INFO,
 #                            file    => ">>test.log" 
-			   layout   => "%d [%5p] (%6P) [%rms] %m{chomp}\t[%M]\n",
+			   layout   => "%d [%5p] (%6P) [%rms] [%M] - %m{chomp}\t%x\n",
 });
 
 use Cwd 'abs_path';
@@ -31,10 +31,10 @@ my $uploads_dir = $config->{dir_paths}->{uploads_dir};
 make_path($uploads_dir, $config->{dir_paths}->{filedone_dir}, $config->{dir_paths}->{fileerr_dir});
 
 my $inotify = Linux::Inotify2->new;
-my $threads_stats = 10;
-my $threads_extract = 10;
-my $threads_munin = 1;
-my $threads_log = 1;
+my $threads_stats = 30;
+my $threads_extract = 30;
+my $threads_munin = 0;
+my $threads_log = 0;
 my $watched_folders;
 
 sub reap_children {
@@ -70,46 +70,43 @@ sub getFunctionName {
 
 ## getwork ($dbh): returns a hash with one element (some unique id). If working for this id failes, it will be ignored in the future
 ## dowork ($dbh, $data): returns one of Definitions.pm exitcodes.
-## finishwork ($dbh, $ret, $data);
 sub focker_launcher {
-    my ($dowork, $getwork, $finishwork, $max_procs) = @_;
+    my ($dowork, $getwork, $max_procs, $args) = @_;
     return if $max_procs < 1;
     use Time::HiRes qw( usleep tv_interval gettimeofday);
     my $running;
     $running->{0} = undef;
     my $dbh = new SqlWork();
     my @thread = (1..$max_procs);
-    $0 = "main_".getFunctionName($getwork);
+    Log::Log4perl::NDC->remove();Log::Log4perl::NDC->push(getFunctionName($dowork));
 
     while (1) {
-	TRACE "$0 Do getwork.\n";
+	TRACE "Do getwork.\n";
 	my $data = $getwork->($dbh);
-	my ($failed_count, $queue_count, $running_count) = ((scalar keys %{ $running->{0} }), scalar keys %$data, (scalar keys %$running)-1);
 	foreach (sort keys %$data) {
 	    if (defined $running->{0}->{$_}){
 		TRACE "Remove existing id $_\n";
 		delete $data->{$_}; 
 	    };
 	}
+	my ($failed_count, $queue_count, $running_count) = ((scalar keys %{ $running->{0} }), scalar keys %$data, (scalar keys %$running)-1);
 	$failed_count -= $running_count;
 
-	TRACE "$0 Got $failed_count failed, $queue_count in queue and $running_count already running (max=$max_procs).\n";
+	DEBUG "Got $failed_count failed, $queue_count in queue and $running_count already running (max=$max_procs).\n";
 	my $id = (sort keys %$data)[0]; ## first element from what remains in $data
 	if ($running_count < $max_procs && defined $id){
 	    $running->{0}->{$id} = time();
 	    my $crt = shift @thread;  # get a number
-	    LOGDIE  "$0 we should always have something.\n" if ! defined $crt;
+	    LOGDIE  "we should always have something.\n" if ! defined $crt;
 	    my $pid = fork();
 	    if (! defined ($pid)){
 		LOGDIE  "Can't fork with id=$id.\n";
 	    } elsif ($pid==0) {
-		$0 = "main_".getFunctionName($dowork);
-		DEBUG "$0 Starring with id=$id\n";
+		Log::Log4perl::NDC->remove();Log::Log4perl::NDC->push(getFunctionName($dowork));
+		DEBUG "Starring with id=$id\n";
 		$dbh->cloneForFork();
-		my $ret = $dowork->($dbh, $data->{$id});
-		DEBUG "$0 Done with status $ret (id=$id).\n";
-		$finishwork->($ret, $data->{$id}, $dbh);
-		DEBUG "$0 Finish with status $ret (id=$id).\n";
+		my $ret = $dowork->($dbh, $data->{$id}, $args);
+		DEBUG "Finish with status $ret (id=$id).\n";
 		$dbh->disconnect;
 		exit $ret;
 	    }
@@ -124,8 +121,8 @@ sub focker_launcher {
 	    push @thread, $thread_nr if defined $thread_nr;
 	} while (defined $thread_nr);
 
-	usleep(500000);
-# 	sleep 1;
+	usleep(10000);
+	sleep 1 if !(scalar @thread && $queue_count-$failed_count>0);
     }
 
     $dbh->disconnect;
@@ -167,12 +164,12 @@ sub periodic_checks {
 
 sub extract_getwork {
     my $dbh = shift;
-    return $dbh->getWorkForExtract(START_EXTRACT, 20);
+    return $dbh->getWorkForExtract(START_EXTRACT);
 }
 
 sub statistics_getwork {
     my $dbh = shift;
-    return $dbh->getWorkForParsers(START_PARSERS);
+    return $dbh->getWorkForStatsParsers(START_PARSERS);
 }
 
 sub logparser_getwork {
@@ -186,56 +183,36 @@ sub munin_getwork {
 }
 
 sub munin_worker {
-    my ($dbh, $data) = @_;
+    my ($dbh, $data, $args) = @_;
     use Mind_work::MuninWork;
-    my $ret = MuninWork::start($data, $dbh);
+    my $ret = MuninWork::run($data, $dbh);
     return $ret;
-}
-
-sub munin_finish {
-    my ($ret, $data, $dbh) = @_;
-    MuninWork::finish($ret, $data, $dbh);
 }
 
 sub statistics_worker {
-    my ($dbh, $data) = @_;
+    my ($dbh, $data, $args) = @_;
     use Mind_work::ParseStats;
-    my $ret = ParseStats::start($data, $dbh);
+    my $ret = ParseStats::run($data, $dbh);
     return $ret;
-}
-
-sub statistics_finish {
-    my ($ret, $data, $dbh) = @_;
-    ParseStats::finish($ret, $data, $dbh);
 }
 
 sub extract_worker {
-    my ($dbh, $data) = @_;
+    my ($dbh, $data, $args) = @_;
     use Mind_work::ExtractFiles;
-    my $ret = ExtractFiles::start($data, $dbh);
+    my $ret = ExtractFiles::run($data, $dbh, $args);
     return $ret;
-}
-
-sub extract_finish {
-    my ($ret, $data, $dbh) = @_;
-    ExtractFiles::finish($ret, $data, $dbh);
 }
 
 sub logparser_worker {
-    my ($dbh, $data) = @_;
+    my ($dbh, $data, $args) = @_;
     use Mind_work::ParseLogs;
-    my $ret = ParseLogs::start($data, $dbh);
+    my $ret = ParseLogs::run($data, $dbh);
     return $ret;
-}
-
-sub logparser_finish {
-    my ($ret, $data, $dbh) = @_;
-    ParseLogs::finish($ret, $data, $dbh);
 }
 
 sub addFilesDB {
     my ($file, $dbh) = @_;
-    if ( -f $file ) {
+    if ( -f $file  && $file !~ m/ERROR_[0-9]+$/i) {
 	DEBUG "Try to insert file $file.\n";
 	my ($name, $dir, $suffix) = fileparse($file, qr/\.[^.]*/);
 	my $file_hash->{file_info}->{size} = -s $file;
@@ -261,16 +238,16 @@ sub main_process_worker {
     my ($forks, $pid);
     $forks->{$main_pid} = "main";
     $pid = fork();
-    if (!$pid) {INFO "Starting forker process extract.\n";focker_launcher(\&extract_worker, \&extract_getwork, \&extract_finish, $threads_extract); exit 0;};
+    if (!$pid) {my $flm = File::LibMagic->new();INFO "Starting forker process extract.\n";focker_launcher(\&extract_worker, \&extract_getwork, $threads_extract, $flm); exit 0;};
     $forks->{$pid} = "extract";
     $pid = fork();
-    if (!$pid) {INFO "Starting forker process statistics.\n";focker_launcher(\&statistics_worker, \&statistics_getwork, \&statistics_finish, $threads_stats); exit 0;};
+    if (!$pid) {INFO "Starting forker process statistics.\n";focker_launcher(\&statistics_worker, \&statistics_getwork, $threads_stats); exit 0;};
     $forks->{$pid} = "statistics";
     $pid = fork();
-    if (!$pid) {INFO "Starting forker process logparser.\n";focker_launcher(\&logparser_worker, \&logparser_getwork, \&logparser_finish, $threads_log); exit 0;};
+    if (!$pid) {INFO "Starting forker process logparser.\n";focker_launcher(\&logparser_worker, \&logparser_getwork, $threads_log); exit 0;};
     $forks->{$pid} = "logs";
     $pid = fork();
-    if (!$pid) {INFO "Starting forker process munin.\n";sleep 2;focker_launcher(\&munin_worker, \&munin_getwork, \&munin_finish, $threads_munin); exit 0;};
+    if (!$pid) {INFO "Starting forker process munin.\n";sleep 2;focker_launcher(\&munin_worker, \&munin_getwork, $threads_munin); exit 0;};
     $forks->{$pid} = "munin";
     $pid = fork();
     if (!$pid) {periodic_checks($forks, $main_pid); exit 0;};

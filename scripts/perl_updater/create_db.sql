@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS __mind_plugins (
 	worker_type varchar(100),
 	app_name varchar(100),
 	plugin_name varchar(100),
-	nr_files_working int,
+	files_queue int,
 	FOREIGN KEY (customer_id) REFERENCES __customers(id),
 	FOREIGN KEY (host_id) REFERENCES __hosts(id),
 	UNIQUE idx_mind_plugins (customer_id, host_id, worker_type, plugin_name),
@@ -61,11 +61,11 @@ CREATE TABLE IF NOT EXISTS __statistics_template (
 	file_id int not null,
 	host_id int not null,
 	timestamp int not null,
-	date varchar(20) not null,
-	time varchar(20) not null,
-	UNIQUE idx_hid_ts (host_id, timestamp),
+	group_by varchar(20),
+	UNIQUE idx_hid_ts (host_id, timestamp, group_by),
 	FOREIGN KEY (host_id) REFERENCES __hosts(id)
 	);
+-- 	row_date varchar(20) not null,
 
 -- CREATE TABLE IF NOT EXISTS rtsstatistics LIKE statistics_template; 
 -- ALTER TABLE rtsstatistics add FOREIGN KEY (host_id) REFERENCES hosts(id);
