@@ -2,7 +2,8 @@ package SqlWork;
 
 use warnings;
 use strict;
-$| = 1;
+$| = 1; 
+$SIG{__WARN__} = sub { die @_ };
 
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
@@ -25,7 +26,7 @@ sub new {
           mysql_use_result => 0,
           mysql_enable_utf8 => 1,
 	  mysql_auto_reconnect => 1,
-          PrintError => 1, }) || die "Could not connect to database: $DBI::errstr";
+          PrintError => 1, }) || LOGDIE "Could not connect to database: $DBI::errstr";
     bless($self, $class);
     return $self;
 }
@@ -36,7 +37,7 @@ sub getDBI_handler {
 
 sub insertFile {
     my ($self, $file_hash, $status) = @_;
-    TRACE "Add to db file $file_hash->{file_info}->{name} with status $status.\n";
+    DEBUG "Add to db file $file_hash->{file_info}->{name} with status $status.\n";
     my $cust_id = $self->get_customer_id($file_hash->{machine}->{customer}) || EXIT_STATUS_NA;
     my $host_id = $self->get_host_id($file_hash->{machine}->{host}, $cust_id) || EXIT_STATUS_NA;
 
@@ -55,33 +56,33 @@ sub insertFile {
 	    ".$db_h->quote($file_hash->{file_info}->{name}).", 
 	    ".$db_h->quote($file_hash->{file_info}->{md5}).", 
 	    $file_hash->{file_info}->{size},
-	    $status)") || die "Error $DBI::errstr\n";
+	    $status)") || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub increasePluginQueue {
     my ($self, $plugin_id) = @_;
     $db_h->do("update $config->{db_config}->{plugins_table} 
 		      set files_queue=IFNULL(files_queue, 0) + 1 WHERE id=$plugin_id")
-	  || die "Error $DBI::errstr\n";
+	  || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub decreasePluginQueue {
     my ($self, $plugin_id) = @_;
     $db_h->do("update $config->{db_config}->{plugins_table} 
 		      set files_queue=files_queue - 1 WHERE id=$plugin_id")
-	  || die "Error $DBI::errstr\n";
+	  || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub nulifyPluginQueue {
     my ($self, $plugin_id) = @_;
     $db_h->do("update $config->{db_config}->{plugins_table} 
 		      set files_queue=NULL WHERE id=$plugin_id")
-	  || die "Error $DBI::errstr\n";
+	  || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub getPluginQueue {
     my ($self, $plugin_id) = @_;
-    my $res = $db_h->selectrow_arrayref("select id from $config->{db_config}->{plugins_table} WHERE id=$plugin_id") || die "Error $DBI::errstr\n";
+    my $res = $db_h->selectrow_arrayref("select id from $config->{db_config}->{plugins_table} WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
     return  $res->[0];
 }
 
@@ -95,21 +96,43 @@ sub updateFileColumns {
 	TRACE "update file_id=$fileid: $columns->[$index]=$values->[$index]\n";
 	push @txt, "$columns->[$index] = $values->[$index]";
     }
-    $db_h->do("update $config->{db_config}->{collected_file_table} set ".(join ", ", @txt)." WHERE id=$fileid") || die "Error $DBI::errstr\n";
+    $db_h->do("update $config->{db_config}->{collected_file_table} set ".(join ", ", @txt)." WHERE id=$fileid") || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub insertRowsTable {
     my ($self, $table_name, $cols, @vals) = @_;
-    LOGDIE "We can't insert those: ".Dumper($table_name, $cols, @{ $vals[0] }) if scalar @$cols != scalar @{ $vals[0] };
+    ## @vals is an array of array refs
+    LOGDIE "We can't insert those: ".Dumper($table_name, $cols, @vals) if scalar @$cols != scalar @{ $vals[0] };
     $_ = join ",", @$_ foreach @vals;
-    $db_h->do("INSERT IGNORE INTO $table_name (".(join ",", @$cols).") VALUES (".(join ") , (", @vals).")") || die "Error $DBI::errstr\n";
+    $db_h->do("INSERT IGNORE INTO $table_name (".(join ",", @$cols).") VALUES (".(join ") , (", @vals).")") || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub createStatsTable {
     my ($self, $table_name) = @_;
     DEBUG "create new table $table_name\n";
-    my $query = $db_h->do("CREATE TABLE IF NOT EXISTS $table_name LIKE $config->{db_config}->{stats_template_table}") || die "Error $DBI::errstr\n";
-    $db_h->do("ALTER TABLE $table_name add FOREIGN KEY (host_id) REFERENCES hosts(id)") || die "Error $DBI::errstr\n" if ! defined $query;
+    $db_h->do("CREATE TABLE IF NOT EXISTS $table_name (
+	file_id int not null,
+	host_id int not null,
+	timestamp int not null,
+	group_by varchar(20),
+	UNIQUE (host_id, timestamp, group_by),
+	FOREIGN KEY (host_id) REFERENCES $config->{db_config}->{host_table}(id))") || LOGDIE "Error $DBI::errstr\n";
+ 
+#     my $query = $db_h->do("CREATE TABLE IF NOT EXISTS $table_name LIKE $config->{db_config}->{stats_template_table}") || LOGDIE "Error $DBI::errstr\n";
+#     if (! defined $query) {
+# 	$db_h->do("ALTER TABLE $table_name add FOREIGN KEY (host_id) REFERENCES hosts(id)") || LOGDIE "Error $DBI::errstr\n";
+# 	$db_h->do("ALTER TABLE $table_name add 
+# , ADD UNIQUE INDEX 'host_id_UNIQUE' ('host_id' ASC) 
+# , ADD UNIQUE INDEX 'timestamp_UNIQUE' ('timestamp' ASC) 
+# , ADD UNIQUE INDEX 'group_by_UNIQUE' ('group_by' ASC) ") || LOGDIE "Error $DBI::errstr\n";
+# 
+# CREATE TABLE IF NOT EXISTS rtsstatistics_2 LIKE __statistics_template
+# ALTER TABLE rtsstatistics_2 add FOREIGN KEY (host_id) REFERENCES hosts(id)
+# ALTER TABLE rtsstatistics_2 add 
+# , ADD UNIQUE INDEX 'host_id_UNIQUE' ('host_id' ASC) 
+# , ADD UNIQUE INDEX 'timestamp_UNIQUE' ('timestamp' ASC) 
+# , ADD UNIQUE INDEX 'group_by_UNIQUE' ('group_by' ASC)
+#    }
 }
 
 sub cloneForFork {
@@ -122,11 +145,17 @@ sub cloneForFork {
 }
 
 sub getIDUsed {
-    my ($self, $table_name, $cols, $vals) = @_;
+    my ($self, $table_name, $cols_old, $vals_old) = @_;
+    use Storable qw(dclone);
+    my $cols = dclone($cols_old);
+    my $vals = dclone($vals_old);
+
     LOGDIE "Not good (cols nr <> vals nr)\n" if scalar @$cols != scalar @$vals;
     my @sel;
     push @sel, "$_=".(shift @$vals) foreach @$cols;
-    my $res = $db_h->selectrow_arrayref("select id from $table_name where ".(join " and ", @sel)) || die "Error $DBI::errstr\n";
+    my $res = $db_h->selectrow_arrayref("select id from $table_name where ".(join " and ", @sel));
+    LOGDIE "Error $DBI::errstr\n" if defined $DBI::errstr;
+#     LOGDIE "Strange shit:\n".Dumper($table_name, $cols_old, $vals_old) if ! defined $res->[0];
     return  $res->[0];
 }
 
@@ -135,11 +164,45 @@ sub getQuotedString {
     return $db_h->quote($string);
 }
 
+sub addPluginConf {
+    my ($self, $id, $info) = @_;
+    my (@values, $sections);
+    foreach my $section (keys %$info) {
+	my $sec_hash = $info->{$section};
+	foreach my $md5 (keys %$sec_hash) {
+	    my $extra_info = join ':', @{$sec_hash->{$md5}};
+	    $db_h->do("INSERT INTO $config->{db_config}->{plugins_conf} (plugin_id, md5_name, section_name, extra_info) VALUES ($id, '$md5', '$section', '$extra_info') ON DUPLICATE KEY UPDATE section_name='$section', extra_info='$extra_info'");
+	}
+    }
+}
+
+sub getPluginConf {
+    my ($self, $plugin_id) = @_;
+    my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_conf} where plugin_id=$plugin_id order by section_name", ['md5_name']);
+    my $res;
+    foreach my $key (keys %$hash){
+	my $section = $hash->{$key}->{section_name};
+	print "Using section $section.\n";
+	my @extra_info = split ":", $hash->{$key}->{extra_info};
+	$res->{$section}->{$key} = \@extra_info;
+    }
+# LOGDIE Dumper("XXXXXXX",$res);
+    return $res;
+}
+
+sub getPluginColumns {
+    my ($self, $plugin_id) = @_;
+    my $array = $db_h->selectcol_arrayref("select md5_name from $config->{db_config}->{plugins_conf} where plugin_id=$plugin_id");
+    my $res;
+    $res->{$_} = 1 foreach @$array;
+    return $res;
+}
+
 sub getColumnList {
   my($self, $table) = @_;
   
   my $sth = $db_h->prepare("SELECT * FROM $table WHERE 1=0");
-  $sth->execute || die "Error $DBI::errstr\n";
+  $sth->execute || LOGDIE "Error $DBI::errstr\n";
   my $cols = $sth->{NAME}; # or NAME_lc if needed
   $sth->finish;
   return $cols;
@@ -149,11 +212,11 @@ sub getCustomers {
     my $self = shift;
     my $hash;
     my $query = $db_h->prepare("select * from $config->{db_config}->{cust_table}");
-    $query->execute() || die "Error $DBI::errstr\n";
+    $query->execute() || LOGDIE "Error $DBI::errstr\n";
     while (my @row = $query->fetchrow_array ){
 	LOGDIE "lame 1\n".Dumper(@row) if @row != 2;
 	my $query_h = $db_h->prepare("select * from $config->{db_config}->{host_table} where customer_id=$row[0]");
-	$query_h->execute() || die "Error $DBI::errstr\n";
+	$query_h->execute() || LOGDIE "Error $DBI::errstr\n";
 	while (my @row_h = $query_h->fetchrow_array ){
 	    LOGDIE "lame 2\n".Dumper(@row_h) if @row_h != 4;
 	    $hash->{$row[1]}->{'id'} = $row[0];
@@ -163,22 +226,6 @@ sub getCustomers {
     return $hash;
 }
 
-# # # # sub fixMissingRRDs {
-# # # #     my ($self, $status, $all_customers) = @_;
-# # # #     DEBUG "Fixing missing RRDs\n";
-# # # #     foreach my $cust_name (keys %$all_customers){
-# # # # 	my $cust_hosts = $all_customers->{$cust_name}->{hosts};
-# # # # 	foreach my $host_name (keys %$cust_hosts){
-# # # # 	    next if defined $db_h->selectrow_arrayref("select * from $config->{db_config}->{collected_file_table} where status=0 and host_id=$cust_hosts->{$host_name}");
-# # # # 	    my $rrd_files_nr = scalar @{ [glob("$Munin::Common::Defaults::MUNIN_DBDIR/$cust_name/$host_name.$cust_name-*")] };
-# # # # 	    ## no rrd files: set all files for this host to status $status, so we will create everything from zero
-# # # # 	    if (! $rrd_files_nr) {
-# # # # 		my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=$status WHERE host_id=$cust_hosts->{$host_name} and (status>$status and status<100)");
-# # # # 		DEBUG "Updated all files ($sth) from host=$host_name with status $status because of no rrd files\n" if ($sth ne "0E0");
-# # # # 	    }
-# # # # 	}
-# # # #     }
-# # # # }
 # # # # 
 # # # # sub cleanDeletedHosts {
 # # # #     my $config = MindCommons::xmlfile_to_hash("config.xml");
@@ -188,7 +235,7 @@ sub getCustomers {
 # # # # 	    ## host name not defined: was deleted. set all files as not collected, so the stats thread will updated them with error. clean dirs
 # # # # # 	    if (! defined $host_name) {
 # # # # # 		DEBUG "Updating all files from hostid=$h_id with status EXIT_HOST_DELETE\n";
-# # # # # 		my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=".EXIT_HOST_DELETE." WHERE host_id=$h_id") || die "Error $DBI::errstr\n";
+# # # # # 		my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=".EXIT_HOST_DELETE." WHERE host_id=$h_id") || LOGDIE "Error $DBI::errstr\n";
 # # # # # 		next;
 # # # # # 	    }
 # # # # 
@@ -362,73 +409,53 @@ sub add_new_columns {
 
     while (my ($index, $sha1) = each @$only_in_arr1) {
 	DEBUG "Adding new column $sha1 ($sha1_hash->{$sha1}) for table $table_name\n";
-	$db_h->do("ALTER TABLE $table_name ADD $sha1 decimal(15,5)") || die "Error $DBI::errstr\n";
+	$db_h->do("ALTER TABLE $table_name ADD $sha1 decimal(15,5)") || LOGDIE "Error $DBI::errstr\n";
     }
     DEBUG "Releasing lock\n";
     $db_h->do("UNLOCK TABLES");
 }
 
-# sub timeFromLastUpdate {
-#     my ($self, $status, $h_id) = @_;
-#     DEBUG "Check if enough time has past from last file inserted\n";
-#     return 0 if ! defined $last_time;
-#     use Time::Local;
-#     return (timegm(gmtime) - $last_time > 3) ? 1 : 0;
-# }
+sub setNeedsUpdate {
+    my ($self, $plugin_id, $status) = @_;
+    $db_h->do("update $config->{db_config}->{plugins_table} set needs_update=$status WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
+}
+
+sub getMuninNoRRD {
+    my $self = shift;
+    use Munin::Master::Utils;
+    my $munin_config = munin_readconfig_base("$Munin::Common::Defaults::MUNIN_CONFDIR/munin.conf");
+
+    my $custs = getCustomers();
+    foreach my $cust_name (sort keys %$custs) {
+	next if $custs->{$cust_name}->{id} < 1;
+	my $hosts = $custs->{$cust_name}->{hosts};
+	foreach my $host_name (sort keys %$hosts) {
+	    my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_table} where host_id=$hosts->{$host_name} and customer_id=$custs->{$cust_name}->{id}", ['id']);
+	    foreach my $plugin_id ( sort keys %$hash) {
+		my @files = glob("$munin_config->{dbdir}/$cust_name/$host_name.$cust_name-$hash->{$plugin_id}->{plugin_name}*");
+		if (! scalar @files) {
+		    DEBUG "Plugin $hash->{$plugin_id}->{plugin_name} has no rrd files. Force reimport.\n";
+		    $self->setNeedsUpdate($plugin_id, 1);
+		}
+	    }
+	}
+    }
+}
 
 # start work if no files exist for extract and all stats files done (no other stats pending). thread should be per inserted_in_tablename
 sub getWorkForMunin {
     my ($self, $status) = @_;
+    $self->getMuninNoRRD();
     use Time::Local;
-    use Munin::Common::Defaults;
-
-#     my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{collected_file_table} where status=".SUCCESS_LAST, ['host_id', 'plugin_name']);
-#   
-# 	if (! glob("$Munin::Common::Defaults::MUNIN_DBDIR/$cust_name/$host_name.$cust_name-$plugin_name*")) {
-# 	    TRACE "Plugin $plugin_name has no rrd files. Force reimport.\n";
-# 	    $ret->{$tables} = $files_ids;
-# 	    return $ret;
-# 	}
-    my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{collected_file_table} where status=$status", ['host_id', 'plugin_id', 'id']);
-return;
-# connect --url "https://localhost/api" --user "admin@internal" --password 'admin1234._'
-# umask 0077; 
-# MYTMP="$(mktemp -t ovirt-XXXXXXXXXX)"; 
-# trap "chmod -R u+rwX \"${MYTMP}\" > /dev/null 2>&1; rm -fr \"${MYTMP}\" > /dev/null 2>&1" 0; 
-# rm -fr "${MYTMP}" && mkdir "${MYTMP}" && tar -C "${MYTMP}" --no-same-permissions -o -x && "${MYTMP}"/setup -c 'ssl=true;management_port=54321' -O 'acasa' -t 2012-10-19T08:54:06  -S /tmp/ovirt-id_rsa_131ae4c2-7952-4c79-a89e-3aab346834ea -p 80 -b  -B ovirtmgmt  http://localhost:80/Components/vds/ http://localhost:80/Components/vds/ localhost 131ae4c2-7952-4c79-a89e-3aab346834ea False
-    my $ret;
-    foreach my $tables (keys %$hash){
-	my $host = $hash->{$tables};
-	LOGDIE "Database is corrupt (hosts): ".Dumper($tables, $host) if scalar keys %$host > 1;
-	my $h_id = (keys %$host)[0];
-	my $host_name = $self->get_host_name($h_id);
-	my $cust_name = $self->get_customer_name_from_host_id($h_id);
-	my $plugin = $hash->{$tables}->{$h_id};
-	LOGDIE "Database is corrupt (plugins): ".Dumper($tables, $plugin) if scalar keys %$plugin > 1;
-	my $plugin_name = (keys %$plugin)[0];
-
-	if ( defined $db_h->selectrow_arrayref("select * from $config->{db_config}->{collected_file_table} where status<".$status." and status>".IGNORE." and host_id=$h_id") ) {
-	    TRACE "We still have files to be processed by host $host_name (id=$h_id)\n";
-	    next;
-	}
-
-	# wait 5 minutes from last file inserted
-# 	my ($last_time) = @{ $db_h->selectrow_arrayref("select ".(timegm(gmtime))."-unix_timestamp(max(parse_done_time)) from $config->{db_config}->{collected_file_table} where status=$status and host_id=$h_id") };
-# 	next if ! defined $last_time || $last_time < 300;
-
-	my $files_ids = $hash->{$tables}->{$h_id}->{$plugin_name};
-	foreach my $file_id (keys %$files_ids){
-# 	    my $hash_ref = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_table} 
-# 		    where host_id=".$db_h->quote($files_ids->{$file_id}->{host_id})." 
-# 		      and stats_table=".$db_h->quote($files_ids->{$file_id}->{inserted_in_tablename}), ['id']  );
-
-# 	    die "Only ONE row should have been returned: ".Dumper($hash_ref) if scalar keys %$hash_ref != 1;
-# 	    my $plugin_id =(keys %$hash_ref)[0];
-# 	    TRACE "Adding plugin id=$plugin_id for munin work\n";
-# 	    $ret->{$plugin_id} = $hash_ref->{$plugin_id};
-	}
+    my $res = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_table} where files_queue=0 and needs_update>0", ['id']);
+#     use Storable qw(dclone);
+#     my $return = dclone($res);
+    foreach (sort keys %$res){
+# 	wait 5 minutes from last file inserted
+	my ($last_time) = @{ $db_h->selectrow_arrayref("select ".(timegm(gmtime))."-unix_timestamp(max(parse_done_time)) from $config->{db_config}->{collected_file_table} where plugin_id=$_") };
+	delete $res->{$_} if (defined $last_time && $last_time < 30);
     }
-    return $ret;
+    return $res;
 }
 
 sub getWorkForExtract {
@@ -443,13 +470,12 @@ sub getWorkForStatsParsers {
     my ($self, $status) = @_;
     my $hash = $db_h->selectall_hashref("select a.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{plugins_table} b where a.status=$status and a.plugin_id=b.id and b.worker_type='statistics'", 'id');
     $self->removeDuplicatePaths($hash);
-# print Dumper("qqq",keys %$hash,"www");
     foreach (keys %$hash) {
 	$hash->{$_}->{plugin_info} = $self->getPluginInfo($_);
 	$hash->{$_}->{customer_name} = $self->get_customer_name($hash->{$_}->{customer_id});
 	$hash->{$_}->{host_name} = $self->get_host_name($hash->{$_}->{host_id});
     }
-
+# INFO Dumper($hash);
     TRACE "Got ".(scalar keys %$hash )." files for stats parser.\n" if scalar keys %$hash;
     return $hash;
 }

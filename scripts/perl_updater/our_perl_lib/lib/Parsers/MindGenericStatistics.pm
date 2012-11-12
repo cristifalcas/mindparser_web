@@ -12,11 +12,8 @@ use Definitions ':all';
 use Log::Log4perl qw(:easy);
 
 my $plugin_info;
-my $groupby_names = {
-	"rts" => ["GwiP"],
-	"dialogicopensessions" => ["SIU ID"],
-  };
-my $max_rows = 500;
+my $max_rows = 5000;
+my $hash_vals;
 my $t0 = [gettimeofday];my $t1=0;my $t2=0;
 
 sub new {
@@ -41,9 +38,10 @@ sub extractHeader {
     ## first is date, second is time
     shift @arr;shift @arr;
     my ($header, $groupby_index);
-    my $name = $groupby_names->{$plugin_info->{plugin_name}}->[0];
+    my $name = $stats_default_info->{$plugin_info->{plugin_name}}->{group_by}->[0];
+#     LOGDIE "Plugin $plugin_info->{plugin_name} needs to be configured.\n" if ! defined $name;
     while (my ($index, $val) = each @arr) {
-	$groupby_index->{$index} = $val if ($val =~ m/^$name$/i);
+	$groupby_index->{$index} = $val if (defined $name && $val =~ m/^$name$/i);
 	push @$header, $val;
 	LOGDIE "We have this hardcoded: $val.\n" if $val eq 'id' || $val eq 'file_id' || $val eq 'host_id' || $val eq 'timestamp' || $val eq 'group_by';
     }
@@ -86,7 +84,7 @@ sub fixHeader {
 
 sub fixValues {
     my ($values, $multi_values, $groupby_index) = @_;
-    my $group_by;
+    my $group_by = "";
     # remove group by and replace multi value
     foreach my $index (sort keys %$multi_values) {
 	splice(@$values, $index, 1, split /;/, $multi_values->{$index}); 
@@ -98,7 +96,7 @@ sub fixValues {
     }
     return ($values, $group_by);
 }
-my $hash_vals;
+
 sub insertRows {
     my ($header, $table_name, $data, $dbh) = @_;
     $dbh->add_new_columns ($table_name, $header);
@@ -115,7 +113,6 @@ sub insertRows {
     push $columns, $header_hash->{$_} foreach (@$header) ;
     $dbh->insertRowsTable($table_name, $columns, @values);
     undef $hash_vals;
-    my $e=tv_interval($t0);$t2 += $e;$t1 += $e;
     INFO "Insert ".(scalar @values)." rows took $t2\n";$t2=0;
 }
 
@@ -135,6 +132,7 @@ sub parse {
     while (<MYFILE>) {
 	my $line = $_;
 	next if $line =~ m/^\s*$/;
+	my $e=tv_interval($t0);$t2 += $e;$t1 += $e;
 	my @line_arr = getArray($line);
 	$count++;
 	if ($line =~ m/^Date\s*,\s*Time\s*,/i){

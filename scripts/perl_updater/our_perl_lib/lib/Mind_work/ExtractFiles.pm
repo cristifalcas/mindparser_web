@@ -104,13 +104,16 @@ sub run {
 	    my $plugin_name = lc($app);
 	    ## fix asc name
 	    $type = "statistics" if $type eq "statistic";
-	    my $columns = ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name'];
-	    my $values = [$data->{customer_id}, $data->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name)];
-
-	    ## add new plugin row
-	    $dbh->insertRowsTable ($config->{db_config}->{plugins_table}, $columns, $values);
-	    ## retrieve the pluginid
+	    my $columns = ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name', 'update_rate'];
+	    my $values = [$data->{customer_id}, $data->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name), $stats_default_info->{$plugin_name}->{update_rate}];
 	    my $plugin_id = $dbh->getIDUsed ($config->{db_config}->{plugins_table}, $columns, $values);
+	    if (! defined $plugin_id) {
+		## add new plugin row
+		$dbh->insertRowsTable ($config->{db_config}->{plugins_table}, $columns, $values);
+		## retrieve the pluginid
+		$plugin_id = $dbh->getIDUsed ($config->{db_config}->{plugins_table}, $columns, $values);
+	    }
+	    $dbh->setNeedsUpdate ($plugin_id, 1);
 	    ## set the new pluginid to the file
 	    $dbh->updateFileColumns ($data->{id}, ['plugin_id'], [$plugin_id]);
 	    $dbh->increasePluginQueue($plugin_id);

@@ -9,6 +9,7 @@
     <md5_names_table>__md5_col_names</md5_names_table>
     <stats_template_table>__statistics_template</stats_template_table>
     <plugins_table>__mind_plugins</plugins_table>
+    <plugins_conf>__mind_plugins_conf</plugins_conf>
   </db_config>
   <dir_paths>
     <filedone_dir>/var/www/html/mindparser/scripts/done/</filedone_dir>

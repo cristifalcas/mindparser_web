@@ -13,10 +13,19 @@ use File::Path qw(make_path remove_tree);
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init({ level   => $INFO,
-#                            file    => ">>test.log" 
-			   layout   => "%d [%5p] (%6P) [%rms] [%M] - %m{chomp}\t%x\n",
-});
+# Log::Log4perl->easy_init({ level   => $INFO,
+# #                            file    => ">>test.log" 
+# 			   layout   => "%d [%5p] (%6P) [%rms] [%M] - %m{chomp}\t%x\n",
+# });
+
+Log::Log4perl::init( \ <<'EOT' );
+        log4perl.logger             = INFO, A1
+	log4perl.filter.ExcludeMe = sub { !/Reading additional config from/ }
+        log4perl.appender.A1        = Log::Log4perl::Appender::Screen
+        log4perl.appender.A1.layout = Log::Log4perl::Layout::PatternLayout
+        log4perl.appender.A1.layout.ConversionPattern =  %d [%5p] (%6P) [%rms] [%M] - %m{chomp}	%x\n
+        log4perl.appender.A1.Filter  = ExcludeMe
+EOT
 
 use Cwd 'abs_path';
 use File::Basename;
@@ -31,9 +40,9 @@ my $uploads_dir = $config->{dir_paths}->{uploads_dir};
 make_path($uploads_dir, $config->{dir_paths}->{filedone_dir}, $config->{dir_paths}->{fileerr_dir});
 
 my $inotify = Linux::Inotify2->new;
-my $threads_stats = 30;
-my $threads_extract = 30;
-my $threads_munin = 0;
+my $threads_stats = 10;
+my $threads_extract = 10;
+my $threads_munin = 4;
 my $threads_log = 0;
 my $watched_folders;
 
@@ -49,9 +58,7 @@ sub reap_children {
 	$thread_nr = $running->{$pid}->{'thread_nr'};
 	DEBUG "child $pid died, from id ".$running->{$pid}->{'fileid'}." with status=$exit_status: reapead.\n";
 	## less then ERRORS_START should be succes. we keep failed because we don't want to work on them again
-	delete $running->{'0'}->{$running->{$pid}->{'fileid'}} if $exit_status < ERRORS_START && 
-								  $exit_status > EXIT_STATUS_NA && 
-								  $exit_status != EXIT_NO_FILE;
+	delete $running->{'0'}->{$running->{$pid}->{'fileid'}} if ! $exit_status;
 	delete $running->{$pid};
 	LOGDIE  "Thread number should be positive.\n" if $thread_nr < 1;
 	return $thread_nr;
@@ -212,7 +219,7 @@ sub logparser_worker {
 
 sub addFilesDB {
     my ($file, $dbh) = @_;
-    if ( -f $file  && $file !~ m/ERROR_[0-9]+$/i) {
+    if ( -f $file ) {
 	DEBUG "Try to insert file $file.\n";
 	my ($name, $dir, $suffix) = fileparse($file, qr/\.[^.]*/);
 	my $file_hash->{file_info}->{size} = -s $file;

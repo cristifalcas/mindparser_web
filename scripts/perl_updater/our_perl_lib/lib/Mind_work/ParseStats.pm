@@ -3,6 +3,7 @@ package ParseStats;
 use warnings;
 use strict; 
 $| = 1;
+$SIG{__WARN__} = sub { die @_ };
 
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
@@ -27,15 +28,8 @@ sub moveFile {
     my $cust_name = $data->{customer_name};
     my $host_name = $data->{host_name};
     my $dir_prefix;
-    if ($ret > ERRORS_START) { #error
-	WARN "Returned error $ret for $filename.\n";
-	$dir_prefix = "$config->{dir_paths}->{fileerr_dir}/$cust_name/$host_name/errcode_$ret/";
-    } elsif ($ret > EXIT_STATUS_NA && $ret <= ERRORS_START) { #normal: 
-	DEBUG "Returned success $ret for $filename.\n";
-	$dir_prefix = "$config->{dir_paths}->{filedone_dir}/$cust_name/$host_name/";
-    } else {
-	LOGDIE "what is this?: $ret\n";
-    }
+    DEBUG "Returned success $ret for $filename.\n";
+    $dir_prefix = "$config->{dir_paths}->{filedone_dir}/$cust_name/$host_name/";
     make_path($dir_prefix);
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
     my $new_name = "$dir_prefix/$name"."_".MindCommons::get_random()."$suffix";
@@ -49,21 +43,21 @@ sub run {
     my $ret;
     if (-f $data->{file_name}) {
 	my $parser;
-	if ($data->{plugin_info}->{plugin_name} eq "rts") {
+	if ($data->{plugin_info}->{plugin_name} =~ m/^(rts|asc|dialogicopensessions|alon900_ivr|alon60_ivr)$/) {
 	    use Parsers::MindGenericStatistics;
 	    $parser = new MindGenericStatistics();
-	} elsif ($data->{plugin_info}->{plugin_name} eq "asc") {
+	} elsif ($data->{plugin_info}->{plugin_name} eq "asccoco") {
 	    use Parsers::MindGenericStatistics;
 	    $parser = new MindGenericStatistics();
 	} else {
 	    LOGDIE "We don't know how to parse files of type $data->{plugin_info}->{plugin_name} yet.\n";
 	}
 	$ret = $parser->parse($data, $dbh);
-# 	moveFile($ret, $data);
+	moveFile($ret, $data);
     } else {
 	$ret = EXIT_NO_FILE;
     }
-    LOGDIE "Exit status for file $data->{file_name} was $ret\n" if $ret != START_MUNIN;
+    LOGDIE "Exit status for file $data->{file_name} was $ret\n" if $ret != START_MUNIN && $ret != EXIT_NO_FILE;
     $dbh->updateFileColumns($data->{id}, ['status'], [$ret]);
     $dbh->decreasePluginQueue($data->{plugin_id});
 

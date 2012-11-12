@@ -31,8 +31,25 @@ use constant {
     ERRORS_LAST		=> 1000,
 };
 
-# ^\s+ => '		\s+=(.*)\n => ', 
-our @EXPORT_OK = ('EXIT_STATUS_NA', 'IGNORE', 'START_EXTRACT', 'START_PARSERS', 'START_MUNIN', 'SUCCESS_LAST', 'ERRORS_START', 'EXIT_NO_FILE', 'EXIT_WRONG_TYPE', 'EXIT_WRONG_NAME', 'EXIT_EMPTY', 'EXIT_ERROR_EXTRACT', 'EXIT_WRONG_MIME', 'EXIT_HOST_DELETE', 'EXIT_EXTR_ERR', 'EXIT_NO_LINES', 'EXIT_NO_ROWS', 'EXIT_NO_RRD', 'EXIT_FILE_BAD', 'EXIT_MUNIN_ERROR', 'ERRORS_LAST', );
+our $stats_default_info = {
+	rts => { group_by	=> ["GwIP"],
+		 update_rate	=> 300,
+		},
+	asc => { group_by	=> [],
+		 update_rate	=> 300,
+		},
+	dialogicopensessions => { group_by	=> ["SIU ID"],
+				  update_rate	=> 3600,
+		},
+	alon60_ivr => { group_by	=> ["dialed digits"],
+				  update_rate	=> 60,
+		},
+	alon900_ivr => { group_by	=> ["dialed digits"],
+				  update_rate	=> 900,
+		},
+};
+
+our @EXPORT_OK = qw(EXIT_STATUS_NA IGNORE START_EXTRACT START_PARSERS START_MUNIN SUCCESS_LAST ERRORS_START EXIT_NO_FILE EXIT_WRONG_TYPE EXIT_WRONG_NAME EXIT_EMPTY EXIT_ERROR_EXTRACT EXIT_WRONG_MIME EXIT_HOST_DELETE EXIT_EXTR_ERR EXIT_NO_LINES EXIT_NO_ROWS EXIT_NO_RRD EXIT_FILE_BAD EXIT_MUNIN_ERROR ERRORS_LAST $stats_default_info);
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
 1;
