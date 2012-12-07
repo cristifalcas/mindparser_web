@@ -118,7 +118,9 @@ function get_header () {
 	<!-- <link rel="stylesheet" href="http://blueimp.github.com/cdn/css/bootstrap.min.css"> -->
 	<link rel="stylesheet" href="css/bootstrap.css">
 	<!-- CSS to style the file input field as button and adjust the Bootstrap progress bars -->
+	<!-- <link rel="stylesheet" href="https://raw.github.com/blueimp/jQuery-File-Upload/master/css/jquery.fileupload-ui.css"> -->
 	<link rel="stylesheet" href="css/jquery.fileupload-ui.css">
+
 	<!-- Shim to make HTML5 elements usable in older Internet Explorer versions -->
 	<!--[if lt IE 9]><script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
 
@@ -132,7 +134,7 @@ function get_footer() {
     return '
 
 	<!-- <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script> -->
-	<script src="js/web/jquery-1.8.1.js"></script>
+	<script src="js/web/jquery-1.8.3.js"></script>
 	<!-- The jQuery UI widget factory, can be omitted if jQuery UI is already included -->
 	<script src="js/vendor/jquery.ui.widget.js"></script>
 	<!-- The Templates plugin is included to render the upload/download listings -->

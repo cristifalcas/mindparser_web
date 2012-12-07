@@ -4,26 +4,12 @@
 //             maxFileSize: undefined,
 
 // inotifywait -m -r --format '%w%f' -e close_write /var/www/html/coco/scripts/uploads/
+print_r($_POST);
+
 include_once('scripts/config.inc.php');
+echo get_header();
 connect_db();
 
-if (isset($_GET['PROGRESS'])) {
-  header('Pragma: no-cache');
-  header('Cache-Control: no-cache, must-revalidate');
-  header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
-  header('Content-type: text/xml');
-  print '<?xml version="1.0"?>';
-//   $progress = (time() % 50) * 2;
-  $q= '<DOCUMENT><PROGRESS>'.((time() % 50) * 2).'</PROGRESS></DOCUMENT>';
-  print $q;
-// error_log("sd $q");
-//   print ;
-  close_db();
-  return;
-}
-
-echo get_header();
-print_r($_POST);
 foreach (get_customers_sql() as $cust) {
     foreach (get_hosts_sql($cust) as $host) {
 	## upload script is in another directory
@@ -61,10 +47,10 @@ if (sizeof($selection) == 2){
 
 close_db();
 
-echo '   
-<div id="progress_container">
-  <div id="progress_bar" style="width: 0%"></div>
-</div>';
+// echo '   
+// <div id="progress_container">
+//   <div id="progress_bar" style="width: 0%"></div>
+// </div>';
 
 echo get_footer();
 ?>

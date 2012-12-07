@@ -77,6 +77,14 @@ CREATE TABLE IF NOT EXISTS __mind_plugins_conf (
 	UNIQUE idx_mind_plugins_conf (plugin_id, md5_name)
 	);
 
+CREATE TABLE IF NOT EXISTS __mind_plugins_conf_defaults (
+	plugin_name varchar(50) not null,
+	section_name varchar(50) not null,
+	md5_name varchar(50) not null,
+	extra_info varchar(2500) not null,
+	FOREIGN KEY (md5_name) REFERENCES __md5_col_names(md5),
+	);
+
 -- CREATE TABLE IF NOT EXISTS __statistics_template (
 -- 	file_id int not null,
 -- 	host_id int not null,

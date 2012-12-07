@@ -41,11 +41,11 @@ our $stats_default_info = {
 	dialogicopensessions => { group_by	=> ["SIU ID"],
 				  update_rate	=> 3600,
 		},
-	alon60_ivr => { group_by	=> ["dialed digits"],
-				  update_rate	=> 60,
+	alon3600_ivr => { group_by	=> ["dialed digits"],
+				  update_rate	=> 3600,
 		},
-	alon900_ivr => { group_by	=> ["dialed digits"],
-				  update_rate	=> 900,
+	alon300_ivr => { group_by	=> ["dialed digits"],
+				  update_rate	=> 300,
 		},
 };
 

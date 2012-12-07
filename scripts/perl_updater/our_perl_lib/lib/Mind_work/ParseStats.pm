@@ -43,7 +43,7 @@ sub run {
     my $ret;
     if (-f $data->{file_name}) {
 	my $parser;
-	if ($data->{plugin_info}->{plugin_name} =~ m/^(rts|asc|dialogicopensessions|alon900_ivr|alon60_ivr)$/) {
+	if ($data->{plugin_info}->{plugin_name} =~ m/^(rts|asc|dialogicopensessions|alon300_ivr|alon3600_ivr)$/) {
 	    use Parsers::MindGenericStatistics;
 	    $parser = new MindGenericStatistics();
 	} elsif ($data->{plugin_info}->{plugin_name} eq "asccoco") {
