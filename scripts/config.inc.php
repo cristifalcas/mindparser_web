@@ -46,6 +46,21 @@ function get_hosts_sql($customer) {
     return $machines;
 }
 
+// function make_dirs() {
+//     foreach (get_customers_sql() as $cust) {
+// 	foreach (get_hosts_sql($cust) as $host) {
+// 	    ## upload script is in another directory
+// 	    $dir_full_path = dirname($_SERVER['SCRIPT_FILENAME'])."/scripts/uploads/$cust/$host/";
+// 	    if (! is_dir ($dir_full_path)) {
+// 		umask(0);
+// 		mkdir($dir_full_path, 0775, true);
+// 		chgrp($dir_full_path, "nobody");
+//     // 	    copy("scripts/uploads.htaccess", "$dir_full_path/.htaccess");
+// 	    }
+// 	}
+//     }
+// }
+
 function generateSelect($name = '', $array = array(), $crt_selection, $input_array = array()) {
     $other_name = "";
     $other_value = "";
@@ -67,9 +82,61 @@ function generateSelect($name = '', $array = array(), $crt_selection, $input_arr
     return $html;
 }
 
+function generateUpload($array) {
+    $selection = null;
+    if (array_key_exists('menu_selection', $array)) {
+      $selection = explode(",",$array['menu_selection']);
+    };
+
+    $body="";
+
+    if (sizeof($selection) == 2){
+	$customer = $selection[0];
+	$host = $selection[1];
+	$url="../cgi-bin/munin-cgi-html/$customer/index.html";
+
+	$file_handle = fopen("scripts/load_body.html", "r");
+	while (!feof($file_handle)) {
+	  $body .= fgets($file_handle);
+	}
+	fclose($file_handle);
+	$body = str_replace(array('$$customer$$','$$host$$', '$$url$$'), array($customer,$host, $url), $body);
+// 	echo $body;
+    }
+    return $body;
+}
+
+function generatePluginEditButton($plugin_id) {
+    return '<form method="post" action="qq.php" id="target" class="'.$plugin_id.'">
+<div id="dialog-form" title="Edit some stats" class="test1_'.$plugin_id.'">
+        <textarea name="name" id="textarea_edit_plugin" class="text ui-widget-content ui-corner-all" >test</textarea>
+</div>
+</form>
+<a href="#" class="test2_'.$plugin_id.'">HTML Tutorial '.$plugin_id.'</a>
+';
+// <button id="create-user" class="some_shit">Some stats</button>
+}
+
+function generateMenuInTable() {
+    $html = '<table cellspacing="0" cellpadding="0" border="0" width="100%">
+  <tr>
+    <td width=160  valign=center>'. generateMenu().'</td>
+    <td >
+
+<div style="width:100%; height:50px; overflow:auto;" id="change_with_plugins" valign=top>
+tywertyh
+
+
+	      dgh gh dfgh          g hdggg fgh dg dgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dg
+       </div>
+    </td>
+  </tr>
+</table><br/>';
+    return $html;
+}
+
 function generateMenu() {
-    $html = '
-<form name="form_menu" method="post" action="index.php"> 
+    $html = '<form name="form_menu" method="post" action="index.php"> 
 <input type="hidden" name="menu_selection" value="sfg"/>
 <ul class="menu" id="menu">
 	<li><a class="menulink">Select Customer</a>
@@ -97,22 +164,21 @@ function generateMenu() {
 	</li>
 </ul> 
 </form>
-<script type="text/javascript">	var menu=new menu.dd("menu");menu.init("menu","menuhover");</script>
-<br/><br/><br/><br/>';
+<script type="text/javascript">	var menu=new menu.dd("menu");menu.init("menu","menuhover");</script>';
+// <br/><br/><br/>
     return $html;
 }
 
-function get_header () {
+function get_head () {
     return '<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8" />
         <title>Statistics graphs</title>
 
+	<!--  ####################### CSS scripts ####################### -->
 	<link rel="stylesheet" href="css/progress_bar.css">
-        <script type="text/javascript" src="js/progress_bar.js"></script>
 	<link rel="stylesheet" href="css/dropdown_menu.css">
-	<script type="text/javascript" src="js/dropdown_menu.js"></script>
 
 	<!-- Bootstrap CSS Toolkit styles -->
 	<!-- <link rel="stylesheet" href="http://blueimp.github.com/cdn/css/bootstrap.min.css"> -->
@@ -120,23 +186,24 @@ function get_header () {
 	<!-- CSS to style the file input field as button and adjust the Bootstrap progress bars -->
 	<!-- <link rel="stylesheet" href="https://raw.github.com/blueimp/jQuery-File-Upload/master/css/jquery.fileupload-ui.css"> -->
 	<link rel="stylesheet" href="css/jquery.fileupload-ui.css">
-
+	<link rel="stylesheet" href="css/jquery-ui-1.9.2.css" /> 
 	<!-- Shim to make HTML5 elements usable in older Internet Explorer versions -->
 	<!--[if lt IE 9]><script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
 
 	<!-- Generic page styles last, to let bootstrap do what it wants and overwrite what we want -->
 	<link rel="stylesheet" href="css/style.css">
-    </head>
-    <body>';
-}
 
-function get_footer() {
-    return '
+	<link rel="stylesheet" href="css/edit_popup.css">
 
+	<!--  ####################### Java scripts ####################### -->
 	<!-- <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script> -->
 	<script src="js/web/jquery-1.8.3.js"></script>
-	<!-- The jQuery UI widget factory, can be omitted if jQuery UI is already included -->
-	<script src="js/vendor/jquery.ui.widget.js"></script>
+	<script src="js/web/jquery-ui-1.9.2.js"></script> 
+
+	<script type="text/javascript" src="js/dropdown_menu.js"></script>
+	<script src="js/textarea_popup.js"></script>
+        <!--  <script type="text/javascript" src="js/progress_bar.js"></script> -->
+
 	<!-- The Templates plugin is included to render the upload/download listings -->
 	<!-- <script src="http://blueimp.github.com/JavaScript-Templates/tmpl.min.js"></script> -->
 	<script src="js/web/tmpl.js"></script>
@@ -155,9 +222,15 @@ function get_footer() {
 	<script src="js/main.js"></script>
 	<!-- The XDomainRequest Transport is included for cross-domain file deletion for IE8+ -->
 	<!--[if gte IE 8]><script src="js/cors/jquery.xdr-transport.js"></script><![endif]-->
+
+    </head>
+    <body>';
+}
+
+function get_footer() {
+    return '
     </body>
 </html>';
 }
-
 
 ?> 

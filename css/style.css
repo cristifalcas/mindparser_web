@@ -1,12 +1,12 @@
 @charset 'UTF-8';
 
 /* editor */
-.me_styled-select_edit select {
+/*.me_styled-select_edit select {
    background: transparent;
    overflow: hidden;
    font-size: 12px;
    border: 1px solid #ccc;
-}
+}*/
 
 /* bootstrap */
 .btn {
@@ -29,14 +29,10 @@ tr {
     border-top: 1px solid rgb(221, 221, 221);
 }
     
-    
-    
 /* global upload bar */
 .span5 {
     width: 380px;
 }
-
-
 
 /* no margin for upload shit */
 .container, .navbar-static-top .container, .navbar-fixed-top .container, .navbar-fixed-bottom .container {
@@ -48,37 +44,26 @@ tr {
     margin-bottom: 2px;
 }
 
-
-
-
-
 /*common*/
-.block {
+/* info stuff*/
+.block_info {
    font-size: 13px;
-/*    line-height: 18px; */
    padding: 0 0 0 15px;
-/*    margin: 0 0 18px; */
    border-left: 5px solid #eeeeee;
 }
 
 body {
     margin:2px; 
-/*     font:11px Verdana,Arial;  */
     font-size: 100%;
     background:#eee;
-/*     line-height: 10px; */
 }
 
-h1 {
-    font-size: 200%;
-}
-h3 {
-    font-size: 160%;
-}
+h1 {font-size: 200%;}
+h3 {font-size: 160%;}
+
 .page-header {
     padding-bottom: 9px;
     margin: 0px 0px 0px;
-/*     border-bottom: 1px solid rgb(238, 238, 238); */
 }
 
 /*Notes and shit*/
