@@ -5,7 +5,8 @@
 
 // print_r($_POST);
 // inotifywait -m -r --format '%w%f' -e close_write /var/www/html/coco/scripts/uploads/
-// make dirs
+// error_reporting(E_STRICT);
+
 include_once('scripts/config.inc.php');
 connect_db();
 
@@ -15,18 +16,13 @@ echo get_head();
 // menu
 echo generateMenuInTable();
 
-// echo generatePluginEditButton("1");
-// echo generatePluginEditButton("2");
-// echo generatePluginEditButton("111");
-// echo generatePluginEditButton("1111");
-
 // upload window
-echo generateUpload($_POST);
+echo generateUpload($_GET);
 
 close_db();
 
 // progress bar at bottom
-// echo '<div id="progress_container"><div id="progress_bar" style="width: 0%"></div></div>';
+echo '<div id="progress_container"><div id="progress_bar" style="width: 0%"></div></div>';
 
 //endpage
 echo get_footer();

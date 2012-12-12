@@ -1,13 +1,5 @@
 @charset 'UTF-8';
 
-/* editor */
-/*.me_styled-select_edit select {
-   background: transparent;
-   overflow: hidden;
-   font-size: 12px;
-   border: 1px solid #ccc;
-}*/
-
 /* bootstrap */
 .btn {
   padding: 2px 6px;
@@ -47,7 +39,7 @@ tr {
 /*common*/
 /* info stuff*/
 .block_info {
-   font-size: 13px;
+   font-size: 90%;
    padding: 0 0 0 15px;
    border-left: 5px solid #eeeeee;
 }
@@ -76,4 +68,63 @@ h3 {font-size: 160%;}
     border-radius: 4px 4px 4px 4px;
     box-shadow: 0px 1px 1px rgba(0, 0, 0, 0.05) inset;
     font-size: 80%;
+}
+
+/* progress container */
+div#progress_container {
+  position: fixed;
+  width: 100%;
+  bottom:0;
+  left:0;
+  background-color:#DDD;
+  height:25px;
+  border: 6px double #ccc; 
+  margin: 0px;
+  padding: 0px;
+  text-align: left;
+}
+/* progress bar */
+div#progress_bar {
+	color: white;
+	background-color: #FF8D40; 
+	height: 12px;
+	padding-bottom: 2px;
+	font-size: 12px;
+	text-align: center;
+	overflow: hidden;
+} 
+
+/* plugins links */
+div.ui-dialog > * { font-size: 60%; }
+textarea#textarea_edit_plugin {
+    margin-bottom:1px; 
+    width:99%;
+    height:99%; 
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+ul#change_with_links_plugins {
+   list-style-type: none;
+}
+ul#change_with_links_plugins li {
+/*    border:1px solid #BBBBBB; */
+   float:left;
+   margin-right:7px;
+}
+
+#change_with_links_plugins { font-size: 90%; } 
+a.link_plugin {
+  color: green;
+  font-weight:500;
+  cursor: pointer; cursor: hand
+}
+
+.help_image {
+    height:20px;
+    float:right;
+     padding-right:5px;
+     padding-top:2px; 
+    width:20px;
 }

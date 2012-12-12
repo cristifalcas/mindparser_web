@@ -6,6 +6,9 @@ $db_pass = '!0mind_statistics@9';
 $db_database = 'mind_statistics';
 $customers_table = '__customers';
 $hosts_table = '__hosts';
+$plugins_table = '__mind_plugins';
+$plugins_conf_table = '__mind_plugins_conf';
+$md5_names_table = '_md5_col_names';
 $customer="";
 $host="";
 
@@ -21,8 +24,8 @@ function connect_db() {
 }
 
 function close_db() {
-  global $db_link;
-  mysql_close($db_link);
+    global $db_link;
+    mysql_close($db_link);
 }
 
 function get_customers_sql() {
@@ -37,8 +40,9 @@ function get_customers_sql() {
 
 function get_hosts_sql($customer) {
     global $hosts_table, $customers_table;
+// print_r(get_plugin_def(1))."</br>";
     $machines = array();
-    $query = "select * from $hosts_table where customer_id in (select id from $customers_table where name='$customer')";
+    $query = "select h.* from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer'";
     $rs = mysql_query($query) or print "get_hosts: $query".mysql_error()."</br>";
     while($row = mysql_fetch_array($rs)){
 	$machines[$row['id']] = $row['name'];
@@ -46,6 +50,54 @@ function get_hosts_sql($customer) {
     return $machines;
 }
 
+function validate($customer_name, $host_name) {
+    global $hosts_table, $customers_table;
+    $query = "select count(*) as nr from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
+    $rs = mysql_query($query) or print "validate: $query".mysql_error()."</br>";
+    $row = mysql_fetch_array($rs);
+    return $row['nr']==1;
+}
+
+function get_host_id ($customer_name, $host_name) {
+    global $hosts_table, $customers_table;
+    $query = "select h.id from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
+    $rs = mysql_query($query) or print "validate: $query".mysql_error()."</br>";
+    $row = mysql_fetch_array($rs);
+    return $row['id'];
+}
+
+function get_plugins_array($host_id) {
+    global $plugins_table;
+    $plugins = array();
+    $query = "select * from $plugins_table where host_id='$host_id'";
+    $rs = mysql_query($query) or print "get_plugins_array: $query".mysql_error()."</br>";
+    while($row = mysql_fetch_array($rs)){
+	array_push($plugins, ["id"=>$row['id'], "name"=>$row['plugin_name']]);
+    }
+    return $plugins;
+}
+
+function get_plugin_def ($plugin_id){
+    global $plugins_conf_table, $md5_names_table;
+    $query = "SELECT c.section_name,m.name FROM __mind_plugins_conf c, __md5_col_names m where c.plugin_id='$plugin_id' and c.md5_name=m.md5 order by 1,2";
+    $rs = mysql_query($query) or print "get_plugin_def: $query".mysql_error()."</br>";
+    $plugin_def_map = array();
+    while($row = mysql_fetch_array($rs)){
+	if (!isset($plugin_def_map[$row['section_name']])) $plugin_def_map[$row['section_name']] = array();
+	array_push($plugin_def_map[$row['section_name']], $row['name']);
+    }
+    $str = "";
+    foreach ($plugin_def_map as $key1 => $arr) {
+// 	print "[$key1]</br>";
+	$str .= "\n[$key1]\n";
+	foreach ($arr as $key2 => $value) {
+// 	    print "$value</br>";
+	    $str .= "$value\n";
+	}
+    }
+    
+    return substr($str, 1);;
+}
 // function make_dirs() {
 //     foreach (get_customers_sql() as $cust) {
 // 	foreach (get_hosts_sql($cust) as $host) {
@@ -106,37 +158,42 @@ function generateUpload($array) {
     return $body;
 }
 
-function generatePluginEditButton($plugin_id) {
-    return '<form method="post" action="qq.php" id="target" class="'.$plugin_id.'">
-<div id="dialog-form" title="Edit some stats" class="test1_'.$plugin_id.'">
-        <textarea name="name" id="textarea_edit_plugin" class="text ui-widget-content ui-corner-all" >test</textarea>
-</div>
-</form>
-<a href="#" class="test2_'.$plugin_id.'">HTML Tutorial '.$plugin_id.'</a>
-';
-// <button id="create-user" class="some_shit">Some stats</button>
-}
+// function generatePluginEditButton($plugin_id) {
+//     return '<form method="post" action="qq.php" id="target" class="'.$plugin_id.'">
+// <div id="dialog-form" title="Edit some stats" class="dialog_plugin_'.$plugin_id.'">
+//         <textarea id="textarea_edit_plugin" class="text ui-widget-content ui-corner-all" >test</textarea>
+// </div>
+// </form>
+// <a class="link__plugin_'.$plugin_id.'">HTML Tutorial '.$plugin_id.'</a>
+// ';
+// // <button id="create-user" class="some_shit">Some stats</button>
+// }
 
 function generateMenuInTable() {
     $html = '<table cellspacing="0" cellpadding="0" border="0" width="100%">
   <tr>
     <td width=160  valign=center>'. generateMenu().'</td>
     <td >
-
-<div style="width:100%; height:50px; overflow:auto;" id="change_with_plugins" valign=top>
-tywertyh
-
-
-	      dgh gh dfgh          g hdggg fgh dg dgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dgdgh gh dfgh g hdggg fgh dg
-       </div>
+	<div style="display: none;" id="edit_plugins_forms_placer"></div>
+	<div style="width:100%; height:60px; overflow:auto;" valign=top title="Edit plugin">
+	    <a href="/get_some_help_here" ><img src="img/blue-circle-help-button.png" class="help_image"/></a>
+	    <ul id="change_with_links_plugins"></ul>
+	</div>
     </td>
   </tr>
-</table><br/>';
+</table><br/>
+
+<div id="test_diff">testes</div>
+<div id="existing_plugins">existing</div>
+<div id="removed_plugins">removed</div>
+<div id="new_plugins">new</div>
+
+';
     return $html;
 }
 
 function generateMenu() {
-    $html = '<form name="form_menu" method="post" action="index.php"> 
+    $html = '<form name="form_menu" method="get" action="index.php"> 
 <input type="hidden" name="menu_selection" value="sfg"/>
 <ul class="menu" id="menu">
 	<li><a class="menulink">Select Customer</a>
@@ -177,7 +234,6 @@ function get_head () {
         <title>Statistics graphs</title>
 
 	<!--  ####################### CSS scripts ####################### -->
-	<link rel="stylesheet" href="css/progress_bar.css">
 	<link rel="stylesheet" href="css/dropdown_menu.css">
 
 	<!-- Bootstrap CSS Toolkit styles -->
@@ -193,7 +249,6 @@ function get_head () {
 	<!-- Generic page styles last, to let bootstrap do what it wants and overwrite what we want -->
 	<link rel="stylesheet" href="css/style.css">
 
-	<link rel="stylesheet" href="css/edit_popup.css">
 
 	<!--  ####################### Java scripts ####################### -->
 	<!-- <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script> -->
@@ -201,7 +256,7 @@ function get_head () {
 	<script src="js/web/jquery-ui-1.9.2.js"></script> 
 
 	<script type="text/javascript" src="js/dropdown_menu.js"></script>
-	<script src="js/textarea_popup.js"></script>
+	<script src="js/me_update_elements.js"></script>
         <!--  <script type="text/javascript" src="js/progress_bar.js"></script> -->
 
 	<!-- The Templates plugin is included to render the upload/download listings -->
