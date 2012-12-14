@@ -7,8 +7,8 @@
 
 // error_reporting(E_STRICT);
 
-$customer="";
-$host="";
+// $customer="";
+// $host="";
 
 include_once('config.inc.php');
 connect_db();
@@ -60,30 +60,30 @@ function get_plugins($customer, $hostname, $extra){
 }
 
 function get_plugin_text($customer, $hostname, $extra){
-    $text = get_plugin_def($extra->id);
-    $arr=array("text"=>$text, "id"=>$extra->id);
+    list($text, $update_rate) = get_plugin_def($extra->id);
+    $arr=array("text"=>$text, "id"=>$extra->id, "update_rate"=>$update_rate);
     print json_encode( $arr );
 }
 
 function set_plugin_text($customer, $hostname, $extra){
-//     $text = get_plugin_def($extra->id);
-//     $arr=array("text"=>$text, "id"=>$extra->id);
-//     print json_encode( $arr );
-    error_log(print_r($extra,true));
+    $text = $extra->text;
+    $plugin_id = $extra->id;
+    $sample_rate = $extra->sample_rate;
+    set_plugin_def($plugin_id, $text, $sample_rate);
+//     error_log($plugin_id.$text);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $post_data = json_decode($_POST['json']);
     $customer = $post_data->customer;
     $hostname = $post_data->hostname;
-//     $data = $post_data->data;
     $function = $post_data->data->function;
     $extra = $post_data->data->extra;
     call_user_func($function, $customer, $hostname, $extra);
 
-    error_log ("post = $customer $hostname $function ");
+//     error_log ("post = $customer $hostname $function ");
 } else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     error_log ("get = ".implode("|",$_POST));
 }
-
+close_db();
 ?> 

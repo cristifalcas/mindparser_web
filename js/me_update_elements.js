@@ -5,35 +5,22 @@ function sort_array(arr) {
 }
 
 function createPluginHTMLElements (plugin_id, plugin_name) {
-    var myForm = document.createElement("form");
-    myForm.setAttribute('id',"form_edit_plugin_"+plugin_id);
-    myForm.setAttribute('method',"post");
-    myForm.setAttribute('action',"qq.php");
+    var form = '<form id="form_edit_plugin_'+plugin_id+'" method="post" action="scripts/get_info.php">\
+	<div id="div_edit_plugin_'+plugin_id+'" title="Edit stats for '+plugin_name+'">\
+	    <textarea id="textarea_edit_plugin_'+plugin_id+'" class="css_textarea_edit_plugin"></textarea>\
+	    <p>\
+		<label class="select_rate">Sample rate:</label>\
+		<input class="select_rate" id="input_edit_plugin_'+plugin_id+'" value="-1"/>\
+		<label class="select_rate" style="color:red;">*(Updating this value will rebuild the graphs for the entire plugin)</label>\
+	    </p>\
+	</div>\
+    </form>'
 
-    var dialogDiv = document.createElement("div");
-    dialogDiv.setAttribute('id',"div_edit_plugin_"+plugin_id);
-    dialogDiv.setAttribute('title',"Edit stats for "+plugin_name);
+    var link='<li id="li_spaces_me">\
+	<a id="link_plugin_'+plugin_id+'" class="link_plugin">'+plugin_name+'</a>\
+    </li>'
 
-    var myTextare = document.createElement("textarea");
-    myTextare.setAttribute('id',"textarea_edit_plugin");
-    myTextare.setAttribute('class',"textarea_edit_plugin_"+plugin_id);
-//     myTextare.innerHTML = plugin_text;
-
-    var myLI = document.createElement("li");
-    myLI.setAttribute('id',"li_spaces_me");
-    
-    var myA = document.createElement("a");
-    myA.setAttribute('id',"link_plugin_"+plugin_id);
-    myA.setAttribute('class',"link_plugin");
-    myA.innerHTML = ""+plugin_name;
-
-    myLI.appendChild(myA);
-
-    // we have parent_div->form->div->texarea and parent_div->a
-    dialogDiv.appendChild(myTextare);
-    myForm.appendChild(dialogDiv);
-
-    return [myForm, myLI];
+    return [form, link];
 }
 
 function clear_plugin_ids (ids_arr){
@@ -60,7 +47,6 @@ function clear_plugin_ids (ids_arr){
       if (a.length != 1) {
 	  alert ("Probleme :((!!"+ids_arr[i]+" length="+a.length+" arr="+ids_arr);
       }
-//       a[0].parentNode.removeChild(a[0]);
       a[0].parentNode.parentNode.removeChild(a[0].parentNode);
   }
 }
@@ -71,13 +57,20 @@ function get_plugin_text(response, textStatus, XMLHttpRequest) {
     };
     var text = response.text;
     var plugin_id = response.id;
-    $('.textarea_edit_plugin_'+plugin_id)[0].readOnly = false;
-    $('.textarea_edit_plugin_'+plugin_id).val(text);
+    var update_rate = response.update_rate;
+
+    $('#textarea_edit_plugin_'+plugin_id)[0].readOnly = false;
+    $('#textarea_edit_plugin_'+plugin_id).val(text);
+    $('#input_edit_plugin_'+plugin_id).val(update_rate);
+//     $('input.original_rate_').removeClass('original_rate_');
+    $('#input_edit_plugin_'+plugin_id).addClass('original_rate_'+update_rate);
 }
 
 function set_plugin_text(response, textStatus, XMLHttpRequest) {
     // done updating plugin info remotely
-    return;
+    var pluginsDiv;
+    pluginsDiv = document.getElementById("errors");
+    pluginsDiv.innerHTML = "errors in set_plugin_text: "+textStatus;
 }
 
 function add_plugin_ids(plugins, plugins_arr){
@@ -88,61 +81,77 @@ function add_plugin_ids(plugins, plugins_arr){
         modal: true,
         draggable: true,
 	closeOnEscape: true,
-// 	open: function(event, ui){
-// 	    $( textarea.textarea_edit_plugin).val("qweasdzxc");
-// //             $('<a />', {
-// //                 'class': 'linkClass',
-// //                 text: 'Cancel',
-// //                 href: '#'
-// //             })
-// //             .appendTo($(".ui-dialog-buttonpane"))
-// //             .click(function(){
-// //                  $(event.target).dialog('close');
-// //             });
-// 	},
+	open: function(event, ui){
+            $('<a />', {
+                'class': 'link_help_me',
+                text: "Help",
+                href: '/get_some_help_for_this'
+            })
+            .appendTo($('.ui-dialog-buttonpane'))
+            .click(function(){
+                 $(event.target).dialog('close');
+            });
+
+// 	    $('<input />', {'id': 'select_rate', 'name':'value'}).appendTo($('.ui-dialog-buttonpane')); //.spinner()
+	},
 	buttons: {
 	    Submit: function() {
-		    var name = $("textarea");
-		var arr = get_customer_host_name();
-		var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"set_plugin_text", extra:{text:name.val()}} };
-		post_data_home(JSONstring, set_plugin_text, false);
-	    
-// 		    var JSONstring = { text:name.val() };
-// 		    var dat = JSON.stringify(frm.serializeArray());
-// 		    $.post("qq.php" ,{post: "name="+name.val()},function() {});
+		var dialog_id = parseFloat($(this).attr('id').replace('div_edit_plugin_',""));
+		var classList = $('#input_edit_plugin_'+dialog_id).attr('class').split(/\s+/);
+		var original_rate;
+		$.each( classList, function(index, item){
+		    if ( item.match(/^original_rate_\d+$/) ) {
+		      original_rate = parseInt(item.replace(/\D/g, ''), 10);
+		    }
+		});
+		var crt_rate = $('#input_edit_plugin_'+dialog_id).val();
+
+		var tsok = true;
+		if (crt_rate != original_rate) {
+		    var alert_text = 'Sample rate has been modified('+crt_rate+' vs '+original_rate+')\nAre you sure?';
+		    tsok = confirm(alert_text);
+		}
+		if (tsok) {
+		    var text = $('textarea#textarea_edit_plugin_'+dialog_id);
+		    var arr = get_customer_host_name();
+		    var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"set_plugin_text", extra:{text:text.val(), id:dialog_id, sample_rate:crt_rate}} };
+		    post_data_home(JSONstring, set_plugin_text);
+		    $('a.link_help_me').remove() ;
 		    $( this ).dialog( "close" );
+		}
 	    },
 	    Cancel: function() {
+		$('a.link_help_me').remove() ;
 		$( this ).dialog( "close" );
 	    }
 	},
 	close: function() {
+	    $('a.link_help_me').remove() ;
 	    $( this ).dialog( "close" );
 // 	    allFields.val( "" ).removeClass( "ui-state-error" );
 	}
-    };
+      };
 
-    var divPlacer = document.getElementById("edit_plugins_forms_placer");
-    var linksPlacer = document.getElementById("change_with_links_plugins");
+      $.each(plugins_arr, function(i, plugin_id) {
+	  if(typeof plugins[i] === 'undefined'){
+	      alert ("Err: "+i);
+      }
+      var plugin_name = plugins[i].name;
+      var result = createPluginHTMLElements(plugin_id, plugin_name);
+      $('#edit_plugins_forms_placer').append(result[0]);
+      $('#change_with_links_plugins').append(result[1]);
 
-    $.each(plugins_arr, function(i, plugin_id) {
-	if(typeof plugins[i] === 'undefined'){
-	    alert ("Err: "+i);
-	}
-	var plugin_name = plugins[i].name;
-	var result = createPluginHTMLElements(plugin_id, plugin_name);
-	divPlacer.appendChild(result[0]);
-	linksPlacer.appendChild(result[1]);
-	var dlg = $('#div_edit_plugin_'+plugin_id).dialog(options);
-	$('#link_plugin_'+plugin_id).click(function() {
-	    var arr = get_customer_host_name();
-	    var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugin_text", extra:{id:plugin_id}} };
-	    post_data_home(JSONstring, get_plugin_text);
-// 	    $('.textarea_edit_plugin_'+plugin_id)[0].innerHTML = "";
-	    $('.textarea_edit_plugin_'+plugin_id)[0].readOnly = true;
-	    dlg.dialog("open");
-	});
-	return;
+      var dlg = $('#div_edit_plugin_'+plugin_id).dialog(options);
+      $('#link_plugin_'+plugin_id).click(function() {
+	      var arr = get_customer_host_name();
+	      var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugin_text", extra:{id:plugin_id}} };
+	      post_data_home(JSONstring, get_plugin_text);
+  // 	    $('.textarea_edit_plugin_'+plugin_id)[0].innerHTML = "";
+	      $('#textarea_edit_plugin_'+plugin_id)[0].readOnly = true;
+	      dlg.dialog("open");
+	      return false;
+      });
+      return;
     });
 }
 
@@ -165,7 +174,7 @@ function updatePlugins(response, textStatus, XMLHttpRequest) {
     var existing_divs = $("*[id^='div_edit_plugin_']")
     var existing_plugin_ids = new Array;
     for (var i = 0; i < existing_divs.length; i++) {
-	existing_plugin_ids[i] = parseFloat(existing_divs[i].id.replace("div_edit_plugin_",""));
+	existing_plugin_ids[i] = parseFloat(existing_divs[i].id.replace('div_edit_plugin_',""));
     }
     existing_plugin_ids = sort_array(existing_plugin_ids);
 
@@ -250,40 +259,13 @@ function updates() {
 
     var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugins", extra:{}} };
     post_data_home(JSONstring, updatePlugins);
-
-
-//     var JSONstring = { customer:customer, hostname:hostname, request_type:"get", data:"progress_bar" };
-//     post_data_home(JSONstring, success_progress_bar);
-    
-//     pluginsDiv.innerHTML = "testes diff3 ok: ";
-// success_progress_bar();
-
-/*
-    $.ajax({
-  type: 'POST',
-  url: "scripts/get_info.php",
-  data: {{customer:"Peter", hostname:"Peter", request_type:"Peter", data:"Peter"}},
-  dataType: "xml",
-  success: function(xml){
-    var clientid = $(xml).find('PROGRESS').eq(1).text();
-    alert(clientid);
-  }   
-});*/
-//     var question = "customer="+customer+"&hostname="+hostname+"&request_type="+request_type+"&data="+data;
-//     ctrl_funct = crtl_progress_bar;
-//     send_request(JSONstring);
 }
 
 // function up
 
 $(function() {
-// request = initXMLHttpClient();
-//     var progress;
-//     progress = document.getElementById('progress');
-
+    updates();
     var t1=setInterval('updates()', 1000);
-//     var t2=setInterval('progress_bar()',  1000);
-//     setInterval(send_request('fname=Peter&age=37&PROGRESS=new', progress_bar), 1000); 
 });
 
 

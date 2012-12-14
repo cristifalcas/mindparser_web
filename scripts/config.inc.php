@@ -8,7 +8,7 @@ $customers_table = '__customers';
 $hosts_table = '__hosts';
 $plugins_table = '__mind_plugins';
 $plugins_conf_table = '__mind_plugins_conf';
-$md5_names_table = '_md5_col_names';
+$md5_names_table = '__md5_col_names';
 $customer="";
 $host="";
 
@@ -18,7 +18,7 @@ function connect_db() {
     global $db_link, $db_user, $db_pass, $db_database;
     $db_link = mysql_connect('localhost', $db_user, $db_pass);
     if (! ($db_link && mysql_select_db($db_database, $db_link))) {
-	print 'Could not connect: ' . mysql_error()."</br>";
+	error_log('Could not connect: ' . mysql_error());
         exit;
     }
 }
@@ -30,7 +30,8 @@ function close_db() {
 
 function get_customers_sql() {
     global $customers_table;
-    $rs = mysql_query("select * from $customers_table where id>0;") or print "get_customers: ".mysql_error()."</br>";
+    $query = "select * from $customers_table where id>0";
+    $rs = mysql_query($query) or error_log("get_customers: $query || ".mysql_error());
     while($row = mysql_fetch_array($rs)){
 	$customers[$row['id']] = $row['name'];
     }
@@ -40,10 +41,9 @@ function get_customers_sql() {
 
 function get_hosts_sql($customer) {
     global $hosts_table, $customers_table;
-// print_r(get_plugin_def(1))."</br>";
     $machines = array();
     $query = "select h.* from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer'";
-    $rs = mysql_query($query) or print "get_hosts: $query".mysql_error()."</br>";
+    $rs = mysql_query($query) or error_log("get_hosts: $query || ".mysql_error());
     while($row = mysql_fetch_array($rs)){
 	$machines[$row['id']] = $row['name'];
     }
@@ -53,7 +53,7 @@ function get_hosts_sql($customer) {
 function validate($customer_name, $host_name) {
     global $hosts_table, $customers_table;
     $query = "select count(*) as nr from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
-    $rs = mysql_query($query) or print "validate: $query".mysql_error()."</br>";
+    $rs = mysql_query($query) or error_log("validate: $query || ".mysql_error());
     $row = mysql_fetch_array($rs);
     return $row['nr']==1;
 }
@@ -61,7 +61,7 @@ function validate($customer_name, $host_name) {
 function get_host_id ($customer_name, $host_name) {
     global $hosts_table, $customers_table;
     $query = "select h.id from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
-    $rs = mysql_query($query) or print "validate: $query".mysql_error()."</br>";
+    $rs = mysql_query($query) or error_log("validate: $query || ".mysql_error());
     $row = mysql_fetch_array($rs);
     return $row['id'];
 }
@@ -70,7 +70,7 @@ function get_plugins_array($host_id) {
     global $plugins_table;
     $plugins = array();
     $query = "select * from $plugins_table where host_id='$host_id'";
-    $rs = mysql_query($query) or print "get_plugins_array: $query".mysql_error()."</br>";
+    $rs = mysql_query($query) or error_log("get_plugins_array: $query || ".mysql_error());
     while($row = mysql_fetch_array($rs)){
 	array_push($plugins, ["id"=>$row['id'], "name"=>$row['plugin_name']]);
     }
@@ -78,9 +78,9 @@ function get_plugins_array($host_id) {
 }
 
 function get_plugin_def ($plugin_id){
-    global $plugins_conf_table, $md5_names_table;
-    $query = "SELECT c.section_name,m.name FROM __mind_plugins_conf c, __md5_col_names m where c.plugin_id='$plugin_id' and c.md5_name=m.md5 order by 1,2";
-    $rs = mysql_query($query) or print "get_plugin_def: $query".mysql_error()."</br>";
+    global $plugins_conf_table, $md5_names_table, $plugins_table;
+    $query = "SELECT c.section_name,m.name FROM $plugins_conf_table c, $md5_names_table m where c.plugin_id=$plugin_id and c.md5_name=m.md5 order by 1,2";
+    $rs = mysql_query($query) or error_log("get_plugin_def1: $query || ".mysql_error());
     $plugin_def_map = array();
     while($row = mysql_fetch_array($rs)){
 	if (!isset($plugin_def_map[$row['section_name']])) $plugin_def_map[$row['section_name']] = array();
@@ -96,8 +96,38 @@ function get_plugin_def ($plugin_id){
 	}
     }
     
-    return substr($str, 1);;
+    $query = "SELECT update_rate FROM $plugins_table where id=$plugin_id";
+    $rs = mysql_query($query) or error_log("get_plugin_def2: $query || ".mysql_error());
+    $update_rate = mysql_fetch_array($rs);
+
+    return array(substr($str, 1), $update_rate['update_rate']);
 }
+
+function set_plugin_def ($plugin_id, $text, $sample_rate){
+    global $plugins_conf_table, $md5_names_table, $plugins_table;
+    mysql_query("LOCK TABLES $plugins_conf_table WRITE, $md5_names_table WRITE;") or error_log("can't lock table $plugins_conf_table: ".mysql_error());
+    $section = "Not configured";
+    foreach(explode("\n", $text) as $value) {
+	$value = preg_replace('/\s+/',' ', $value);
+	if (preg_match("/^\[.*\]$/i", $value)){
+	    $section = preg_replace("/^\[(.*)\]$/i", "$1", $value);
+// 	    $section = $value;
+// 	    error_log("section $value =".trim("  sa   asf sad      sadasd sad sad   "));
+	} else {
+	    $query = "select md5 from  $md5_names_table where name='$value'";
+	    $rs = mysql_query($query) or error_log("set_plugin_def1: $query || ".mysql_error());
+	    $md5_name = mysql_fetch_array($rs)['md5'];
+	    $query = "update $plugins_conf_table set section_name='$section' where plugin_id=$plugin_id and md5_name='$md5_name' and section_name<>'$section'";
+	    mysql_query($query) or error_log("set_plugin_def2: $query || ".mysql_error());
+	    if (mysql_affected_rows() > 0){error_log("section plugin_id=$plugin_id and md5_name=$md5_name and section_name=$section");}
+	}
+    }
+    mysql_query("UNLOCK TABLES;");
+    
+    $query = "update $plugins_table set update_rate=$sample_rate where id=$plugin_id";
+    mysql_query($query) or error_log("set_plugin_def3: $query || ".mysql_error());
+}
+
 // function make_dirs() {
 //     foreach (get_customers_sql() as $cust) {
 // 	foreach (get_hosts_sql($cust) as $host) {
@@ -182,12 +212,7 @@ function generateMenuInTable() {
     </td>
   </tr>
 </table><br/>
-
-<div id="test_diff">testes</div>
-<div id="existing_plugins">existing</div>
-<div id="removed_plugins">removed</div>
-<div id="new_plugins">new</div>
-
+<div id="errors">Errors</div>
 ';
     return $html;
 }
