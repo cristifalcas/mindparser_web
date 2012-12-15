@@ -6,7 +6,7 @@ function sort_array(arr) {
 
 function createPluginHTMLElements (plugin_id, plugin_name) {
     var form = '<form id="form_edit_plugin_'+plugin_id+'" method="post" action="scripts/get_info.php">\
-	<div id="div_edit_plugin_'+plugin_id+'" title="Edit stats for '+plugin_name+'">\
+	<div id="div_edit_plugin_'+plugin_id+'" title="Edit stats for '+plugin_name+'" class="div_edit_plugin">\
 	    <textarea id="textarea_edit_plugin_'+plugin_id+'" class="css_textarea_edit_plugin"></textarea>\
 	    <p>\
 		<label class="select_rate">Sample rate:</label>\
@@ -73,6 +73,9 @@ function set_plugin_text(response, textStatus, XMLHttpRequest) {
     pluginsDiv.innerHTML = "errors in set_plugin_text: "+textStatus;
 }
 
+function rebuild_plugin(response, textStatus, XMLHttpRequest) {
+}
+
 function add_plugin_ids(plugins, plugins_arr){
       var options = {
 	autoOpen: false,
@@ -82,15 +85,22 @@ function add_plugin_ids(plugins, plugins_arr){
         draggable: true,
 	closeOnEscape: true,
 	open: function(event, ui){
-            $('<a />', {
-                'class': 'link_help_me',
-                text: "Help",
-                href: '/get_some_help_for_this'
-            })
-            .appendTo($('.ui-dialog-buttonpane'))
-            .click(function(){
-                 $(event.target).dialog('close');
-            });
+	  $('.ui-dialog-buttonpane').find('button:contains("Cancel")').button({icons: {primary: 'ui-icon-cancel'}});
+	  $('.ui-dialog-buttonpane').find('button:contains("Submit")').button({icons: {primary: 'ui-icon-circle-check'}});
+	  $('.ui-dialog-buttonpane').find('button:contains("Rebuild")').button({icons: {primary: 'ui-icon-alert'}});
+	  $('.ui-dialog-buttonpane').find('button:contains("Delete")').button({icons: {primary: 'ui-icon-trash'}});
+
+	  $('<a />', {
+	    'class': 'link_help_me ',
+	    text: "Help",
+	    title: "Help",
+	    href: '#'
+	  })
+	  .button({icons: {primary: "ui-icon-help"}})
+	  .appendTo($('.ui-dialog-buttonpane'))
+	  .click(function(){
+		$(event.target).dialog('close');
+	  });
 
 // 	    $('<input />', {'id': 'select_rate', 'name':'value'}).appendTo($('.ui-dialog-buttonpane')); //.spinner()
 	},
@@ -116,13 +126,24 @@ function add_plugin_ids(plugins, plugins_arr){
 		    var arr = get_customer_host_name();
 		    var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"set_plugin_text", extra:{text:text.val(), id:dialog_id, sample_rate:crt_rate}} };
 		    post_data_home(JSONstring, set_plugin_text);
-		    $('a.link_help_me').remove() ;
 		    $( this ).dialog( "close" );
 		}
 	    },
 	    Cancel: function() {
-		$('a.link_help_me').remove() ;
 		$( this ).dialog( "close" );
+	    },
+	    'Rebuild graphs': function() {
+		if (confirm('Are you sure?\nThis may take a few hours to complete.')){
+		    var dialog_id = parseFloat($(this).attr('id').replace('div_edit_plugin_',""));
+		    var crt_rate = $('#input_edit_plugin_'+dialog_id).val();
+		    var text = $('textarea#textarea_edit_plugin_'+dialog_id);
+		    var arr = get_customer_host_name();
+		    var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"rebuild_plugin", extra:{text:text.val(), id:dialog_id, sample_rate:crt_rate}} };
+		    post_data_home(JSONstring, rebuild_plugin);
+		    $( this ).dialog( "close" );
+		}
+	    },
+	    'Delete plugin': function() {
 	    }
 	},
 	close: function() {
@@ -256,16 +277,74 @@ function get_customer_host_name() {
 
 function updates() {
     var arr = get_customer_host_name();
-
+    if(typeof arr === 'undefined'){return};
     var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugins", extra:{}} };
     post_data_home(JSONstring, updatePlugins);
 }
 
-// function up
+function complete_cust() {
+    $( "#autocomplete_customers" )
+    // don't navigate away from the field on tab when selecting an item
+    .bind( "keydown", function( event ) {
+	if ( event.keyCode === $.ui.keyCode.TAB &&
+	$( this ).data( "autocomplete" ).menu.active ) {
+	event.preventDefault();
+	}
+    })
+    .autocomplete({
+	source: function( request, response ) {
+	    var JSONstring = { customer:"", hostname:"", data:{function:"get_customers_autocomplete", extra:{request:request.term}} };
+	    post_data_home(JSONstring, response);
+	},
+	focus: function() {return false;},
+    });
+}
+
+function input_text() {
+    $(".defaultText").focus(function(srcc)
+    {
+        if ($(this).val() == $(this)[0].title)
+        {
+            $(this).removeClass("defaultTextActive");
+            $(this).val("");
+        }
+    });
+    
+    $(".defaultText").blur(function()
+    {
+        if ($(this).val() == "")
+        {
+            $(this).addClass("defaultTextActive");
+            $(this).val($(this)[0].title);
+        }
+    });
+    
+    $(".defaultText").blur();
+}
+
+function switch_select() {
+    $(".switch_selector").click(function(){
+	var hiddenEls  = $("div.selector").filter(":hidden");
+	var visibleEls = $("div.selector").filter(":visible");
+	$.each( hiddenEls, function(index, item){
+	  $(item).show();
+		});
+	$.each( visibleEls, function(index, item){
+	  $(item).hide();
+		});
+	return false;
+    });
+}
+
+function init() {
+    complete_cust();
+    input_text();
+    switch_select();
+}
+
 
 $(function() {
-    updates();
-    var t1=setInterval('updates()', 1000);
+  init()
+  updates();
+  var t1=setInterval('updates()', 1000);
 });
-
-

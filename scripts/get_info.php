@@ -58,6 +58,11 @@ function get_plugins($customer, $hostname, $extra){
     $arr=array("plugins"=>get_plugins_array(get_host_id($customer, $hostname)));
     print json_encode( $arr );
 }
+function rebuild_plugin($customer, $hostname, $extra){
+    $text = $extra->text;
+    $plugin_id = $extra->id;
+    $sample_rate = $extra->sample_rate;
+}
 
 function get_plugin_text($customer, $hostname, $extra){
     list($text, $update_rate) = get_plugin_def($extra->id);
@@ -73,6 +78,14 @@ function set_plugin_text($customer, $hostname, $extra){
 //     error_log($plugin_id.$text);
 }
 
+function get_customers_autocomplete ($customer, $hostname, $extra){
+//     $search_string = $extra->request;
+//     $arr=array("foo", "bar", "hallo", "world");
+    $arr = get_customers_autocomplete_sql($extra->request);
+    print json_encode( $arr );
+//     print '"foo", "bar", "hallo", "world"';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $post_data = json_decode($_POST['json']);
     $customer = $post_data->customer;
@@ -81,9 +94,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $extra = $post_data->data->extra;
     call_user_func($function, $customer, $hostname, $extra);
 
-//     error_log ("post = $customer $hostname $function ");
+//     error_log ($_POST['json']);
 } else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    error_log ("get = ".implode("|",$_POST));
+    error_log ("get = ".implode("|",$_GET));
 }
 close_db();
 ?> 

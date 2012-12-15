@@ -36,6 +36,18 @@ function get_customers_sql() {
 	$customers[$row['id']] = $row['name'];
     }
     return $customers;
+}
+
+function get_customers_autocomplete_sql($str) {
+    global $customers_table;
+//     error_log($str);
+    $query = "select name from $customers_table where lower(name) like '".$str."%' order by 1 LIMIT 0, 10";
+    $rs = mysql_query($query) or error_log("get_customers: $query || ".mysql_error());
+    $arr = array();
+    while($row = mysql_fetch_array($rs)){
+	array_push($arr, $row['name']);
+    }
+    return $arr;
     
 }
 
@@ -200,13 +212,22 @@ function generateUpload($array) {
 // }
 
 function generateMenuInTable() {
-    $html = '<table cellspacing="0" cellpadding="0" border="0" width="100%">
+    $html = '<table  class="tableMain">
   <tr>
-    <td width=160  valign=center>'. generateMenu().'</td>
+    <td width=185 class="my_selector">
+      <input type="image" src="img/switch2.png" name="image" class="switch_selector" title="Switch selection method">
+      <div class="selector">
+	'. generateMenu().'
+      </div>
+      <div class="selector" style="display: none;">
+	<input id="autocomplete_customers" class="defaultText" title="Enter customer" type="text" />
+	<input id="autocomplete_hosts" class="defaultText" title="Enter hostname" type="text"/>
+      </div>
+    </td>
     <td >
 	<div style="display: none;" id="edit_plugins_forms_placer"></div>
 	<div style="width:100%; height:60px; overflow:auto;" valign=top title="Edit plugin">
-	    <a href="/get_some_help_here" ><img src="img/blue-circle-help-button.png" class="help_image"/></a>
+	    <a href="/get_some_help_here" title="Help"><img src="img/blue-circle-help-button.png" class="help_image"/></a>
 	    <ul id="change_with_links_plugins"></ul>
 	</div>
     </td>
@@ -219,7 +240,7 @@ function generateMenuInTable() {
 
 function generateMenu() {
     $html = '<form name="form_menu" method="get" action="index.php"> 
-<input type="hidden" name="menu_selection" value="sfg"/>
+<input type="hidden" name="menu_selection" value="qwe" />
 <ul class="menu" id="menu">
 	<li><a class="menulink">Select Customer</a>
 		<ul>';
