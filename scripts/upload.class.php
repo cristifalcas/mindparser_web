@@ -35,6 +35,9 @@ class UploadHandler
     );
 
     function __construct($options = null, $initialize = true) {
+// 	foreach ($_POST as $key => $value) {error_log ("post $key => $value");}
+// 	foreach ($_GET as $key => $value) {error_log ("get $key => $value");}
+
 	$dir = "uploads/".$_GET['customer']."/".$_GET['host'];
 	session_start();
 
@@ -109,10 +112,10 @@ class UploadHandler
                     'jpeg_quality' => 80
                 ),
                 */
-                'thumbnail' => array(
-                    'max_width' => 80,
-                    'max_height' => 80
-                )
+//                 'thumbnail' => array(
+//                     'max_width' => 80,
+//                     'max_height' => 80
+//                 )
             )
         );
         if ($options) {

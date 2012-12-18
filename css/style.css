@@ -39,10 +39,10 @@ body {
 h1 {font-size: 200%;}
 h3 {font-size: 160%;}
 
-.page-header {
+/*.page-header {
     padding-bottom: 9px;
     margin: 0px 0px 0px;
-}
+}*/
 
 /*Notes and shit*/
 .well {
@@ -91,14 +91,15 @@ div#progress_bar {
 .switch_selector {
     height:20px;
     width:20px;
-    float:right;
+    float:left;
     padding-right:5px;
-    padding-top:2px; 
+    padding-top:3px; 
 }
 
 /*dialog resize*/
 .ui-dialog .ui-dialog-buttonpane button {
     margin: 0em .3em 0em 0;
+    font-size: 80%;
 }
 .ui-dialog .ui-dialog-content {
     padding: 0em 0em;
@@ -110,11 +111,11 @@ div#progress_bar {
 }
 
 /* plugins links */
-ul#change_with_links_plugins {
+ul.links_plugins {
    list-style-type: none;
    font-size: 90%;
 }
-ul#change_with_links_plugins li {
+ul.links_plugins li {
 /*    border:1px solid #BBBBBB; */
    float:left;
    margin-right:7px;
@@ -222,3 +223,6 @@ font-size: 14px;
 /*   clear:both; */
 }
 
+.ui-autocomplete-loading {
+  background: white url('images/ui-anim_basic_16x16.gif') right center no-repeat;
+}

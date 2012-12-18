@@ -1,5 +1,9 @@
 "use strict";
 
+Array.prototype.diff = function(a) {
+    return this.filter(function(i) {return !(a.indexOf(i) > -1);});
+};
+
 function sort_array(arr) {
     return arr.sort(function(a,b){return a - b});
 }
@@ -16,11 +20,10 @@ function createPluginHTMLElements (plugin_id, plugin_name) {
 	</div>\
     </form>'
 
-    var link='<li id="li_spaces_me">\
-	<a id="link_plugin_'+plugin_id+'" class="link_plugin">'+plugin_name+'</a>\
-    </li>'
+    var link_edit  ='<li><a id="link_edit_plugin_'+plugin_id+'"  class="link_plugin">'+plugin_name+'</a></li>'
+    var link_graphs='<li><a id="link_graph_plugin_'+plugin_id+'" class="link_plugin" href="'+plugin_name+'">'+plugin_name+'</a></li>'
 
-    return [form, link];
+    return [form, link_edit, link_graphs];
 }
 
 function clear_plugin_ids (ids_arr){
@@ -42,12 +45,15 @@ function clear_plugin_ids (ids_arr){
       }
       form[0].parentNode.removeChild(form[0]);
 
-      // delete parent of link_plugin_i
-      var a = $( "a#link_plugin_"+ids_arr[i]);
+      // delete parent of link_edit_plugin_i
+      var a = $( "a#link_edit_plugin_"+ids_arr[i]);
       if (a.length != 1) {
 	  alert ("Probleme :((!!"+ids_arr[i]+" length="+a.length+" arr="+ids_arr);
       }
       a[0].parentNode.parentNode.removeChild(a[0].parentNode);
+
+      var b = $( "a#link_graph_plugin_"+ids_arr[i]);
+      b[0].parentNode.parentNode.removeChild(a[0].parentNode);
   }
 }
 
@@ -68,9 +74,14 @@ function get_plugin_text(response, textStatus, XMLHttpRequest) {
 
 function set_plugin_text(response, textStatus, XMLHttpRequest) {
     // done updating plugin info remotely
-    var pluginsDiv;
-    pluginsDiv = document.getElementById("errors");
-    pluginsDiv.innerHTML = "errors in set_plugin_text: "+textStatus;
+}
+
+function write_error_div(text) {
+//     var pluginsDiv;
+//     pluginsDiv = document.getElementById("errors");
+//     pluginsDiv.innerHTML = "errors in set_plugin_text: "+text;
+    $("#errors").text("errors in set_plugin_text: "+text).show(0);
+//     ;
 }
 
 function rebuild_plugin(response, textStatus, XMLHttpRequest) {
@@ -96,7 +107,7 @@ function add_plugin_ids(plugins, plugins_arr){
 	    title: "Help",
 	    href: '#'
 	  })
-	  .button({icons: {primary: "ui-icon-help"}})
+	  .button({icons: {secondary: "ui-icon-help"}, text: false})
 	  .appendTo($('.ui-dialog-buttonpane'))
 	  .click(function(){
 		$(event.target).dialog('close');
@@ -157,41 +168,29 @@ function add_plugin_ids(plugins, plugins_arr){
 	  if(typeof plugins[i] === 'undefined'){
 	      alert ("Err: "+i);
       }
-      var plugin_name = plugins[i].name;
-      var result = createPluginHTMLElements(plugin_id, plugin_name);
-      $('#edit_plugins_forms_placer').append(result[0]);
-      $('#change_with_links_plugins').append(result[1]);
 
-      var dlg = $('#div_edit_plugin_'+plugin_id).dialog(options);
-      $('#link_plugin_'+plugin_id).click(function() {
-	      var arr = get_customer_host_name();
-	      var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugin_text", extra:{id:plugin_id}} };
-	      post_data_home(JSONstring, get_plugin_text);
-  // 	    $('.textarea_edit_plugin_'+plugin_id)[0].innerHTML = "";
-	      $('#textarea_edit_plugin_'+plugin_id)[0].readOnly = true;
-	      dlg.dialog("open");
-	      return false;
-      });
+      var plugin_name = plugins[i].name;
+	  var result = createPluginHTMLElements(plugin_id, plugin_name);
+	  $('div#edit_plugins_forms_placer').append(result[0]);
+	  $('ul#change_edit_plugins').append(result[1]);
+	  $('ul#change_view_plugins').append(result[2]);
+	  
+	  var dlg = $('#div_edit_plugin_'+plugin_id).dialog(options);
+	  $('a#link_edit_plugin_'+plugin_id).click(function() {
+		  var arr = get_customer_host_name();
+		  var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugin_text", extra:{id:plugin_id}} };
+		  post_data_home(JSONstring, get_plugin_text);
+      // 	    $('.textarea_edit_plugin_'+plugin_id)[0].innerHTML = "";
+		  $('#textarea_edit_plugin_'+plugin_id)[0].readOnly = true;
+		  dlg.dialog("open");
+		  return false;
+	  });
+
       return;
     });
 }
 
-// function retrievePlugins(){
-//     var myplugins=[[99,1, 2, 3, 5, 54],[99,1, 5,6,7,9],[99,1,3,6,7,8,9],[99,2,1,3,4,5,6],[99,1,2,4,6,7],[1,3,5,67,89],[1,34,6,8],[,2,5,7,9],[1,2,3,4,567],[1,5,8,11],[1,4,5,7,8,9]];
-//     var randomnumber = Math.floor(Math.random()*11); //0-10
-//     var crt_plugin_ids = myplugins[randomnumber];
-//     if(typeof crt_plugin_ids === 'undefined'){
-// 	return;
-//     };
-// 
-//     return sort_array(crt_plugin_ids);
-// }
-
 function updatePlugins(response, textStatus, XMLHttpRequest) {
-    Array.prototype.diff = function(a) {
-	return this.filter(function(i) {return !(a.indexOf(i) > -1);});
-    };
-
     var existing_divs = $("*[id^='div_edit_plugin_']")
     var existing_plugin_ids = new Array;
     for (var i = 0; i < existing_divs.length; i++) {
@@ -209,21 +208,6 @@ function updatePlugins(response, textStatus, XMLHttpRequest) {
 	crt_plugin_ids[i] = parseFloat(plugins[i].id);
     }
     crt_plugin_ids = sort_array(crt_plugin_ids);
-
-//     crt_plugin_ids = retrievePlugins();
-    
-//     var pluginsDiv;
-//     pluginsDiv = document.getElementById("existing_plugins");
-//     pluginsDiv.innerHTML = "existing_plugins crt: "+existing_plugin_ids;
-// 
-//     pluginsDiv = document.getElementById("test_diff");
-//     pluginsDiv.innerHTML = "current: "+crt_plugin_ids;
-// 
-//     pluginsDiv = document.getElementById("new_plugins");
-//     pluginsDiv.innerHTML = "new_plugins to add: "+crt_plugin_ids.diff(existing_plugin_ids);
-// 
-//     pluginsDiv = document.getElementById("removed_plugins");
-//     pluginsDiv.innerHTML = "removed_plugins to remove: "+existing_plugin_ids.diff( crt_plugin_ids );
     
     clear_plugin_ids(existing_plugin_ids.diff( crt_plugin_ids ));
     add_plugin_ids(plugins, crt_plugin_ids.diff(existing_plugin_ids));
@@ -265,29 +249,24 @@ function post_data_home( JSONstring, ctrl_funct, async) {
 }
 
 function get_customer_host_name() {
-    var url = $('#fileupload').prop('action');
-    if(typeof url === 'undefined'){
-	return;
-    };
-    var arr = url.split('?')[1].split('&');
-    var customer = arr[0].replace(/^customer=/, "");
-    var hostname = arr[1].replace(/^host=/, "");
+    var customer = $('div#local_config').attr('customer') || '';
+    var hostname = $('div#local_config').attr('hostname') || '';
+//     write_error_div(customer);
+//     var url = $('#fileupload').prop('action');
+//     if(typeof url === 'undefined'){
+// 	return;
+//     };
+//     var arr = url.split('?')[1].split('&');
+//     var customer = arr[0].replace(/^customer=/, "");
+//     var hostname = arr[1].replace(/^host=/, "");
     return [customer, hostname];
-}
-
-function updates() {
-    var arr = get_customer_host_name();
-    if(typeof arr === 'undefined'){return};
-    var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugins", extra:{}} };
-    post_data_home(JSONstring, updatePlugins);
 }
 
 function complete_cust() {
     $( "#autocomplete_customers" )
     // don't navigate away from the field on tab when selecting an item
     .bind( "keydown", function( event ) {
-	if ( event.keyCode === $.ui.keyCode.TAB &&
-	$( this ).data( "autocomplete" ).menu.active ) {
+	if ( event.keyCode === $.ui.keyCode.TAB && $( this ).data( "autocomplete" ).menu.active ) {
 	event.preventDefault();
 	}
     })
@@ -297,23 +276,22 @@ function complete_cust() {
 	    post_data_home(JSONstring, response);
 	},
 	focus: function() {return false;},
-    });
+// 	select: function( event, ui ) {
+// 	    log( ui.item ? "Selected: " + ui.item.label : "Nothing selected, input was " + this.value);
+// 	    },
+	});
 }
 
 function input_text() {
-    $(".defaultText").focus(function(srcc)
-    {
-        if ($(this).val() == $(this)[0].title)
-        {
+    $(".defaultText").focus(function(srcc){
+        if ($(this).val() == $(this)[0].title){
             $(this).removeClass("defaultTextActive");
             $(this).val("");
         }
     });
     
-    $(".defaultText").blur(function()
-    {
-        if ($(this).val() == "")
-        {
+    $(".defaultText").blur(function(){
+        if ($(this).val() == ""){
             $(this).addClass("defaultTextActive");
             $(this).val($(this)[0].title);
         }
@@ -323,17 +301,89 @@ function input_text() {
 }
 
 function switch_select() {
-    $(".switch_selector").click(function(){
+    $("input.switch_selector").click(function(){
 	var hiddenEls  = $("div.selector").filter(":hidden");
 	var visibleEls = $("div.selector").filter(":visible");
-	$.each( hiddenEls, function(index, item){
-	  $(item).show();
-		});
-	$.each( visibleEls, function(index, item){
-	  $(item).hide();
-		});
+	$.each( hiddenEls, function(index, item){$(item).show();});
+	$.each( visibleEls, function(index, item){$(item).hide();});
+	if ($('div#local_config').attr('view_mode') == 'view'){
+	    $('input.switch_selector').attr('src', "img/serp_molot.png");
+	    $('input.switch_selector').attr('title', "Switch to view mode");
+	    $('div#local_config').attr('view_mode', 'edit');
+	} else if ($('div#local_config').attr('view_mode') == 'edit'){
+	    $('input.switch_selector').attr('src', "img/graph_mode.jpg");
+	    $('input.switch_selector').attr('title', "Switch to edit mode");
+	    $('div#local_config').attr('view_mode', 'view');
+	}
+	
 	return false;
     });
+}
+
+function updates() {
+      update_download();
+
+    var arr = get_customer_host_name();
+    var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugins", extra:{}} };
+    post_data_home(JSONstring, updatePlugins);
+}
+
+
+function update_download() {
+//     var count=0;
+    var url = $('#fileupload').prop('action') || location.href;
+//     $.each( $("tr.template-download"), function(index, item){count++;});
+    $.ajax({
+            url: url,
+            dataType: 'json',
+//             context: $('tbody.files')[0]
+        }).done(function (result) {
+
+    var arr_existing;
+    
+    $.each($("tr.template-download"), function (key, object) {arr_existing[key] = object;});
+    
+if (collection.hasOwnProperty(key_to_find)) { // found it!... }
+else { // didn't find it... }
+    
+    var on_site = $.each(result, function (index, item) {
+	jQuery.inArray("John", arr)
+	var file_name = item.name,
+	    file_size = item.size,
+	    file_url = item.url,
+	    file_delete_url = item.delete_url,
+	    file_delete_type = item.delete_type;
+	    
+<tr class="template-download fade in">
+            <td class="name">
+                <a href="file_url" title="file_name" rel="" download="file_name">file_name</a>
+            </td>
+            <td class="size"><span>file_size KB</span></td>
+            <td colspan="2"></td>
+        
+        <td class="delete">
+            <button class="btn btn-danger" data-type="DELETE" data-url="file_delete_url">
+                <i class="icon-trash icon-white"></i>
+                <span>Delete</span>
+            </button>
+            <input type="checkbox" name="delete" value="1">
+        </td>
+    </tr>
+
+// 	    $.each( $(this).children("tr.template-download"), function(index, item){
+// 	      $(item).remove();
+// 		  write_error_div(index);
+write_error_div(name);
+	    });
+// 	     $.each( $("tr.template-download"), function(index, item){count++;});
+//             if (result && result.length) {
+// 	  $(this).remove(); 
+//                 url=JSON.stringify(arr_existing);
+// 		url=result[0].name;
+// 		write_error_div(url);
+//             }
+        });
+//     write_error_div(url);
 }
 
 function init() {

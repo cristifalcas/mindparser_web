@@ -176,14 +176,18 @@ function generateSelect($name = '', $array = array(), $crt_selection, $input_arr
     return $html;
 }
 
-function generateUpload($array) {
+function generateStatusbar() {
+    return '<div id="progress_container"><div id="progress_bar" style="width: 0%"></div></div>';;
+}
+
+function generateUpload($get_array) {
     $selection = null;
-    if (array_key_exists('menu_selection', $array)) {
-      $selection = explode(",",$array['menu_selection']);
+    if (array_key_exists('menu_selection', $get_array)) {
+      $selection = explode(",",$get_array['menu_selection']);
     };
+    $customer=''; $host='';
 
     $body="";
-
     if (sizeof($selection) == 2){
 	$customer = $selection[0];
 	$host = $selection[1];
@@ -195,8 +199,13 @@ function generateUpload($array) {
 	}
 	fclose($file_handle);
 	$body = str_replace(array('$$customer$$','$$host$$', '$$url$$'), array($customer,$host, $url), $body);
-// 	echo $body;
+
+    } else {
+// 	$body .= '<form id="fileupload" action="scripts/upload.class.php?customer=customer&host=host" method="POST" enctype="multipart/form-data"></form>';
     }
+    $body .= "
+	<div id=\"local_config\" customer=\"".$customer."\" hostname=\"".$host."\" view_mode=\"view\">
+	</div>\n";
     return $body;
 }
 
@@ -215,7 +224,7 @@ function generateMenuInTable() {
     $html = '<table  class="tableMain">
   <tr>
     <td width=185 class="my_selector">
-      <input type="image" src="img/switch2.png" name="image" class="switch_selector" title="Switch selection method">
+      <input type="image" src="img/graph_mode.jpg" name="image" class="switch_selector" title="Switch to edit mode">
       <div class="selector">
 	'. generateMenu().'
       </div>
@@ -225,10 +234,12 @@ function generateMenuInTable() {
       </div>
     </td>
     <td >
-	<div style="display: none;" id="edit_plugins_forms_placer"></div>
-	<div style="width:100%; height:60px; overflow:auto;" valign=top title="Edit plugin">
-	    <a href="/get_some_help_here" title="Help"><img src="img/blue-circle-help-button.png" class="help_image"/></a>
-	    <ul id="change_with_links_plugins"></ul>
+	<div id="edit_plugins_forms_placer" style="display:none;"></div>
+	<div class="selector" style="width:100%; height:60px; overflow:auto;display:none;valign:top;" title="Edit plugin">
+	    <ul id="change_edit_plugins" class="links_plugins"></ul>
+	</div>
+	<div class="selector" style="width:100%; height:60px; overflow:auto;valign:top;" title="View plugin">
+	    <ul id="change_view_plugins" class="links_plugins"></ul>
 	</div>
     </td>
   </tr>
@@ -323,6 +334,7 @@ function get_head () {
 	<script src="js/main.js"></script>
 	<!-- The XDomainRequest Transport is included for cross-domain file deletion for IE8+ -->
 	<!--[if gte IE 8]><script src="js/cors/jquery.xdr-transport.js"></script><![endif]-->
+ 
 
     </head>
     <body>';

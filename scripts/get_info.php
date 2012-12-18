@@ -82,6 +82,7 @@ function get_customers_autocomplete ($customer, $hostname, $extra){
 //     $search_string = $extra->request;
 //     $arr=array("foo", "bar", "hallo", "world");
     $arr = get_customers_autocomplete_sql($extra->request);
+// sleep (1);
     print json_encode( $arr );
 //     print '"foo", "bar", "hallo", "world"';
 }
@@ -92,7 +93,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $hostname = $post_data->hostname;
     $function = $post_data->data->function;
     $extra = $post_data->data->extra;
-    call_user_func($function, $customer, $hostname, $extra);
+    if (function_exists($function) ) {
+	call_user_func($function, $customer, $hostname, $extra);
+    } else {
+	error_log("function name '$function' doesn't exist.");
+    }
 
 //     error_log ($_POST['json']);
 } else if ($_SERVER['REQUEST_METHOD'] === 'GET') {

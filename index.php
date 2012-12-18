@@ -22,7 +22,7 @@ echo generateUpload($_GET);
 close_db();
 
 // progress bar at bottom
-echo '<div id="progress_container"><div id="progress_bar" style="width: 0%"></div></div>';
+echo generateStatusbar();
 
 //endpage
 echo get_footer();

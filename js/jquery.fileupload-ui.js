@@ -41,7 +41,7 @@
             // By default, files added to the widget are uploaded as soon
             // as the user clicks on the start buttons. To enable automatic
             // uploads, set the following option to true:
-            autoUpload: false,
+            autoUpload: true,
             // The following option limits the number of files that are
             // allowed to be uploaded using this widget:
             maxNumberOfFiles: undefined,
@@ -74,7 +74,7 @@
             filesContainer: undefined,
             // By default, files are appended to the files container.
             // Set the following option to true, to prepend files instead:
-            prependFiles: false,
+            prependFiles: true,
             // The expected data type of the upload response, sets the dataType
             // option of the $.ajax upload requests:
             dataType: 'json',

@@ -12,7 +12,7 @@
 /*jslint nomen: true, unparam: true, regexp: true */
 /*global $, window, document */
 
-$(function () {
+function main_js_q() {
     'use strict';
 
     // Initialize the jQuery File Upload widget:
@@ -84,4 +84,9 @@ $(function () {
         });
 //     }
 
-});
+}
+
+$(function() {
+//   var t1=setInterval('main_js_q()', 1000);
+main_js_q();
+}); 
