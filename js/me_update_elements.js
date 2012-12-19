@@ -327,92 +327,31 @@ function updates() {
 }
 
 function update_downloads() {
-      $('#fileupload').fileupload({
-        url: $('#fileupload').prop('action')
-    });
+//     $('#fileupload').fileupload({url: $('#fileupload').prop('action')});
     $.ajax({
-            url: $('#fileupload').prop('action'),
-            dataType: 'json',
-            context: $('#fileupload')[0] 
-        }).done(function (result) {
-var nr_remote=result.length, nr_onpage=0;
-var count=0;
-    var existing_in_page = {};
-    $.each($("tr.template-download"), function (index, item) {
-      existing_in_page[$(item).children("td").children("a").attr("title")] = {item_obj:item};
-      nr_onpage++;
-    });
-    //
-    var qwe="";
-    var remaining_on_site=new Array;
-    $.each(result, function (index, item){
-	if (existing_in_page[item.name]){
-qwe=existing_in_page[item.name]+"bla";
-// count++;
-	    delete existing_in_page[item.name];
-// 	    delete result[index];
-	} else {
-// 	  $('<p/>').text(item.name).appendTo('body');
-// result.splice(index, 1)
-	    remaining_on_site[count++] = item;
-	}
-    });
-    $.each(existing_in_page, function (index, item){ $(existing_in_page[index].item_obj).remove();});
-var b=nr_remote+" "+nr_onpage+" "+existing_in_page.length+" "+remaining_on_site.length+" "+count;
-     $(this).fileupload('option', 'done').call(this, null, {result: remaining_on_site});
-write_error_div(qwe+b+"||"+nr_remote+" "+nr_onpage+" "+existing_in_page.length+" "+remaining_on_site.length+" "+count);
-//     $.each(result, function (index, file) {
-//       if (result[index] != undefined){
-// qwe = qwe+result[index].name;
-// $(this).fileupload('option', 'done').call(this, null, {result: result});
-// }
-//     });
-/*
-for(var i=0;i<result.length;i++){
-  if (result[i] == undefined){
-    result.splice(i, 1)
-  } else {
-//   qwe = qwe+result[i].name;
-  }*/
-// }
-//             if (result && result.length ) {
-// //                 $(this).fileupload('option', 'done').call(this, null, {result: result});
-//             }
-//             
-//             for(var i=0;i<result.length;i++){
-//   qwe = qwe+result[i].name;
-// }
-// $(this).fileupload('option', 'done').call(this, null, {result: result});
+	url: $('#fileupload').prop('action'),
+	dataType: 'json',
+	context: $('#fileupload')[0] 
+    }).done(function (result) {
+	var count=0;
+	$.each($("tr.template-download"), function (index, item) {
+	    existing_in_page[$(item).children("td").children("a").attr("title")] = {item_obj:item};
+	});
 
+	var remaining_on_site=new Array;
+	$.each(result, function (index, item){
+	    if (existing_in_page[item.name]){
+		delete existing_in_page[item.name];
+	    } else {
+		remaining_on_site[count++] = item;
+	    }
+	});
+	// remove deleted files
+	$.each(existing_in_page, function (index, item){ $(existing_in_page[index].item_obj).remove();});
+	// add new files
+	$(this).fileupload('option', 'done').call(this, null, {result: remaining_on_site});
 
-// Using obj['key'] is even faster than hasOwnProperty()
-// if (collection.hasOwnProperty(key_to_find)) { // found it!... }
-// else { // didn't find it... }
-//     
-//     var on_site = $.each(result, function (index, item) {
-// 	jQuery.inArray("John", arr)
-// 	var file_name = item.name,
-// 	    file_size = item.size,
-// 	    file_url = item.url,
-// 	    file_delete_url = item.delete_url,
-// 	    file_delete_type = item.delete_type;
-// 	    
-// <tr class="template-download fade in">
-//             <td class="name">
-//                 <a href="file_url" title="file_name" rel="" download="file_name">file_name</a>
-//             </td>
-//             <td class="size"><span>file_size KB</span></td>
-//             <td colspan="2"></td>
-//         
-//         <td class="delete">
-//             <button class="btn btn-danger" data-type="DELETE" data-url="file_delete_url">
-//                 <i class="icon-trash icon-white"></i>
-//                 <span>Delete</span>
-//             </button>
-//             <input type="checkbox" name="delete" value="1">
-//         </td>
-//     </tr>
-        });
+    });
 }
 
 function init() {
