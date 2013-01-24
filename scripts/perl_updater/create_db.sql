@@ -1,6 +1,8 @@
 drop database mind_statistics;
+SET GLOBAL innodb_file_per_table=1;
 create database mind_statistics;
 grant index, create, select, insert, update, delete, drop, alter, lock tables on  mind_statistics.* to 'mind_statistics'@'%' identified by '!0mind_statistics@9';
+grant index, create, select, insert, update, delete, drop, alter, lock tables on  mind_statistics.* to 'mind_statistics'@'localhost' identified by '!0mind_statistics@9';
 use mind_statistics;
 
 CREATE TABLE IF NOT EXISTS __customers (
@@ -82,9 +84,9 @@ CREATE TABLE IF NOT EXISTS __mind_plugins_conf_defaults (
 	section_name varchar(50) not null,
 	md5_name varchar(50) not null,
 	extra_info varchar(2500) not null,
-	FOREIGN KEY (md5_name) REFERENCES __md5_col_names(md5),
+	FOREIGN KEY (md5_name) REFERENCES __md5_col_names(md5)
 	);
-
+SET GLOBAL innodb_file_per_table=0;
 -- CREATE TABLE IF NOT EXISTS __statistics_template (
 -- 	file_id int not null,
 -- 	host_id int not null,

@@ -9,100 +9,101 @@
 
 /* global upload bar */
 .span5 {
-    width: 380px;
+  width: 380px;
 }
 
 /* no margin for upload shit */
 .container, .navbar-static-top .container, .navbar-fixed-top .container, .navbar-fixed-bottom .container {
-    width: 97%;
+  width: 97%;
 }
 
 .progress {
-    height: 15px;
-    margin-bottom: 2px;
+  height: 15px;
+  margin-bottom: 2px;
 }
 
 /*common*/
 /* info stuff*/
 .block_info {
-   font-size: 90%;
-   padding: 0 0 0 15px;
-   border-left: 5px solid #eeeeee;
+  font-size: 90%;
+  padding: 0 0 0 15px;
+  border-left: 5px solid #eeeeee;
 }
 
 body {
-    margin:2px; 
-    font-size: 100%;
-    background:#eee;
+  margin:2px; 
+  font-size: 100%;
+  background:#eee;
 }
 
 h1 {font-size: 200%;}
 h3 {font-size: 160%;}
 
 /*.page-header {
-    padding-bottom: 9px;
-    margin: 0px 0px 0px;
+padding-bottom: 9px;
+margin: 0px 0px 0px;
 }*/
 
 /*Notes and shit*/
 .well {
-    min-height: 20px;
-    padding: 10px;
-    margin-bottom: 10px;
-    background-color: rgb(245, 245, 245);
-    border: 1px solid rgb(227, 227, 227);
-    border-radius: 4px 4px 4px 4px;
-    box-shadow: 0px 1px 1px rgba(0, 0, 0, 0.05) inset;
-    font-size: 80%;
+  min-height: 20px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background-color: rgb(245, 245, 245);
+  border: 1px solid rgb(227, 227, 227);
+  border-radius: 4px 4px 4px 4px;
+  box-shadow: 0px 1px 1px rgba(0, 0, 0, 0.05) inset;
+  font-size: 80%;
 }
 
 /* progress container */
 div#progress_container {
   position: fixed;
   width: 100%;
-  bottom:0;
-  left:0;
+  bottom: 0;
+  left: 0;
   background-color:#DDD;
-  height:25px;
+  height: 75px;
   border: 6px double #ccc; 
   margin: 0px;
   padding: 0px;
   text-align: left;
 }
 /* progress bar */
-div#progress_bar {
-	color: white;
-	background-color: #FF8D40; 
-	height: 12px;
-	padding-bottom: 2px;
-	font-size: 12px;
-	text-align: center;
-	overflow: hidden;
-} 
+/*div#progress_bar {
+color: white;
+background-color: #FF8D40; 
+height: 12px;
+padding-bottom: 2px;
+font-size: 12px;
+text-align: center;
+overflow: hidden;
+} */
 
 .help_image {
-    height:20px;
-    float:right;
-     padding-right:5px;
-     padding-top:2px; 
-    width:20px;
+  height:20px;
+  float:right;
+  padding-right:5px;
+  padding-top:2px; 
+  width:20px;
 }
 
 .switch_selector {
-    height:20px;
-    width:20px;
-    float:left;
-    padding-right:5px;
-    padding-top:3px; 
+  height:20px;
+  width:20px;
+  float:left;
+  padding-right:5px;
+  padding-left:5px;
+  padding-top:3px; 
 }
 
 /*dialog resize*/
 .ui-dialog .ui-dialog-buttonpane button {
-    margin: 0em .3em 0em 0;
-    font-size: 80%;
+  margin: 0em .3em 0em 0;
+  font-size: 80%;
 }
 .ui-dialog .ui-dialog-content {
-    padding: 0em 0em;
+  padding: 0em 0em;
 }
 .ui-dialog .ui-dialog-titlebar {
   line-height: 15px; 
@@ -112,13 +113,13 @@ div#progress_bar {
 
 /* plugins links */
 ul.links_plugins {
-   list-style-type: none;
-   font-size: 90%;
+  list-style-type: none;
+  font-size: 90%;
 }
 ul.links_plugins li {
 /*    border:1px solid #BBBBBB; */
-   float:left;
-   margin-right:7px;
+  float:left;
+  margin-right:7px;
 }
 a.link_plugin {
   color: green;
@@ -126,21 +127,20 @@ a.link_plugin {
   cursor: pointer; cursor: hand
 }
 
-
 div.ui-dialog > * { 
   font-size: 64%; 
 }
-/* keytool -keysize 2048 -genkey -alias frontend1.somesite.address.com -keyalg RSA -keystore mind_private_certificate.keystore */
+
 textarea.css_textarea_edit_plugin {
-    margin-bottom:1px; 
-    width:99%;
-    height:95%; 
-    line-height: 14px
-    -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
-    box-sizing: border-box;
-    resize: none;
-    box-shadow: none;
+  margin-bottom:1px; 
+  width:99%;
+  height:95%; 
+  line-height: 14px
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+  resize: none;
+  box-shadow: none;
 }
 
 .select_rate {
@@ -154,12 +154,12 @@ p { margin: 0 0 0 0;}
 
 /* rows style */
 .table th, .table td {
-    padding: 2px;
-    line-height: 13px;
-    text-align: left;
-    vertical-align: middle;
-    border-top: 1px solid rgb(221, 221, 221);
-    font-size: 12px;
+  padding: 2px;
+  line-height: 13px;
+  text-align: left;
+  vertical-align: middle;
+  border-top: 1px solid rgb(221, 221, 221);
+  font-size: 12px;
 }
 
 table.tableMain {
@@ -170,13 +170,13 @@ table.tableMain {
 }
 
 tr {
-    border-top: 1px solid rgb(221, 221, 221);
+  border-top: 1px solid rgb(221, 221, 221);
 }
-    
+
 /*td.start td.cancel td.delete {
-  float: right;
-  text-align:right;
-  display: inline;
+float: right;
+text-align:right;
+display: inline;
 }*/
 
 input[type="text"] {
@@ -190,39 +190,89 @@ input[type="text"] {
   border-radius: 4px;
 }
 
-.defaultText { 
-  width:100%;
-}
+/*.defaultText { 
+width:100%;
+}*/
 .defaultTextActive { 
 /*   color: #a1a1a1;  */
   font-style: italic; 
 }
 
 .my_selector {
-    vertical-align:top;
+  vertical-align:top;
 }
+
 .selector {
   float:left;
   width:80%;
 /*   clear:both; */
 }
 
-.ui-menu .ui-menu-item a {
-font-size: 14px;
+/* .ui-menu .ui-menu-item a { */
+/* font-size: 14px; */
 /* text-decoration:blink; */
 /* display: block; */
 /* padding: 0 0; */
 /* line-height: 1.5; */
 /* zoom: 0; */
 /* font-weight: normal; */
-}
+/* } */
 
-.link_help_me {
+/* .link_help_me { */
 /*   float:left; */
-  vertical-align:middle;
+/*   vertical-align:middle; */
 /*   clear:both; */
-}
+/* } */
 
 .ui-autocomplete-loading {
   background: white url('images/ui-anim_basic_16x16.gif') right center no-repeat;
 }
+
+
+a.edit_menu {
+  font-size: 13px;
+  font-weight: bold;
+  color:#000;
+  display:block; 
+  left:150px; 
+  top:0px;
+  width: 144px;
+  padding: 2px 3px 3px;
+  text-align: center;
+  text-decoration: none;
+  cursor: default;
+  float:left
+  background-color:#c5c5c5;
+  background: url("../img/header.gif") repeat scroll 0% 0% transparent;
+  border: 1px solid #aaa;
+}
+
+a.edit_menu:hover {
+  background:url(../img/header_over.gif);
+}
+
+/* customer edit */
+table.edit_customersX  td {
+  padding-top: .3em;
+  padding-bottom: .5em;
+}
+/* table.edit_customersX { */
+/*   width: 100%; */
+/* } */
+
+a.select_customer.ui-button.ui-widget.ui-state-default.ui-corner-all.ui-button-text-only > *{
+/*   padding: .2em .4em .4em .4em; */
+}
+.myfields label, .myfields input, .myfields a {
+  display:inline-block;
+}
+
+.noselect {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+

@@ -1,144 +1,16 @@
 <?php
-
-$db_link;
-$db_user = 'mind_statistics';
-$db_pass = '!0mind_statistics@9';
-$db_database = 'mind_statistics';
-$customers_table = '__customers';
-$hosts_table = '__hosts';
-$plugins_table = '__mind_plugins';
-$plugins_conf_table = '__mind_plugins_conf';
-$md5_names_table = '__md5_col_names';
+include_once('functions_sql.php');
 $customer="";
 $host="";
 
-session_start();
-
-function connect_db() {
-    global $db_link, $db_user, $db_pass, $db_database;
-    $db_link = mysql_connect('localhost', $db_user, $db_pass);
-    if (! ($db_link && mysql_select_db($db_database, $db_link))) {
-	error_log('Could not connect: ' . mysql_error());
-        exit;
-    }
+function connect() {
+  connect_db();
 }
 
-function close_db() {
-    global $db_link;
-    mysql_close($db_link);
+function disconnect() {
+  close_db();
 }
-
-function get_customers_sql() {
-    global $customers_table;
-    $query = "select * from $customers_table where id>0";
-    $rs = mysql_query($query) or error_log("get_customers: $query || ".mysql_error());
-    while($row = mysql_fetch_array($rs)){
-	$customers[$row['id']] = $row['name'];
-    }
-    return $customers;
-}
-
-function get_customers_autocomplete_sql($str) {
-    global $customers_table;
-//     error_log($str);
-    $query = "select name from $customers_table where lower(name) like '".$str."%' order by 1 LIMIT 0, 10";
-    $rs = mysql_query($query) or error_log("get_customers: $query || ".mysql_error());
-    $arr = array();
-    while($row = mysql_fetch_array($rs)){
-	array_push($arr, $row['name']);
-    }
-    return $arr;
-    
-}
-
-function get_hosts_sql($customer) {
-    global $hosts_table, $customers_table;
-    $machines = array();
-    $query = "select h.* from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer'";
-    $rs = mysql_query($query) or error_log("get_hosts: $query || ".mysql_error());
-    while($row = mysql_fetch_array($rs)){
-	$machines[$row['id']] = $row['name'];
-    }
-    return $machines;
-}
-
-function validate($customer_name, $host_name) {
-    global $hosts_table, $customers_table;
-    $query = "select count(*) as nr from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
-    $rs = mysql_query($query) or error_log("validate: $query || ".mysql_error());
-    $row = mysql_fetch_array($rs);
-    return $row['nr']==1;
-}
-
-function get_host_id ($customer_name, $host_name) {
-    global $hosts_table, $customers_table;
-    $query = "select h.id from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
-    $rs = mysql_query($query) or error_log("validate: $query || ".mysql_error());
-    $row = mysql_fetch_array($rs);
-    return $row['id'];
-}
-
-function get_plugins_array($host_id) {
-    global $plugins_table;
-    $plugins = array();
-    $query = "select * from $plugins_table where host_id='$host_id'";
-    $rs = mysql_query($query) or error_log("get_plugins_array: $query || ".mysql_error());
-    while($row = mysql_fetch_array($rs)){
-	array_push($plugins, ["id"=>$row['id'], "name"=>$row['plugin_name']]);
-    }
-    return $plugins;
-}
-
-function get_plugin_def ($plugin_id){
-    global $plugins_conf_table, $md5_names_table, $plugins_table;
-    $query = "SELECT c.section_name,m.name FROM $plugins_conf_table c, $md5_names_table m where c.plugin_id=$plugin_id and c.md5_name=m.md5 order by 1,2";
-    $rs = mysql_query($query) or error_log("get_plugin_def1: $query || ".mysql_error());
-    $plugin_def_map = array();
-    while($row = mysql_fetch_array($rs)){
-	if (!isset($plugin_def_map[$row['section_name']])) $plugin_def_map[$row['section_name']] = array();
-	array_push($plugin_def_map[$row['section_name']], $row['name']);
-    }
-    $str = "";
-    foreach ($plugin_def_map as $key1 => $arr) {
-// 	print "[$key1]</br>";
-	$str .= "\n[$key1]\n";
-	foreach ($arr as $key2 => $value) {
-// 	    print "$value</br>";
-	    $str .= "$value\n";
-	}
-    }
-    
-    $query = "SELECT update_rate FROM $plugins_table where id=$plugin_id";
-    $rs = mysql_query($query) or error_log("get_plugin_def2: $query || ".mysql_error());
-    $update_rate = mysql_fetch_array($rs);
-
-    return array(substr($str, 1), $update_rate['update_rate']);
-}
-
-function set_plugin_def ($plugin_id, $text, $sample_rate){
-    global $plugins_conf_table, $md5_names_table, $plugins_table;
-    mysql_query("LOCK TABLES $plugins_conf_table WRITE, $md5_names_table WRITE;") or error_log("can't lock table $plugins_conf_table: ".mysql_error());
-    $section = "Not configured";
-    foreach(explode("\n", $text) as $value) {
-	$value = preg_replace('/\s+/',' ', $value);
-	if (preg_match("/^\[.*\]$/i", $value)){
-	    $section = preg_replace("/^\[(.*)\]$/i", "$1", $value);
-// 	    $section = $value;
-// 	    error_log("section $value =".trim("  sa   asf sad      sadasd sad sad   "));
-	} else {
-	    $query = "select md5 from  $md5_names_table where name='$value'";
-	    $rs = mysql_query($query) or error_log("set_plugin_def1: $query || ".mysql_error());
-	    $md5_name = mysql_fetch_array($rs)['md5'];
-	    $query = "update $plugins_conf_table set section_name='$section' where plugin_id=$plugin_id and md5_name='$md5_name' and section_name<>'$section'";
-	    mysql_query($query) or error_log("set_plugin_def2: $query || ".mysql_error());
-	    if (mysql_affected_rows() > 0){error_log("section plugin_id=$plugin_id and md5_name=$md5_name and section_name=$section");}
-	}
-    }
-    mysql_query("UNLOCK TABLES;");
-    
-    $query = "update $plugins_table set update_rate=$sample_rate where id=$plugin_id";
-    mysql_query($query) or error_log("set_plugin_def3: $query || ".mysql_error());
-}
+// session_start();
 
 // function make_dirs() {
 //     foreach (get_customers_sql() as $cust) {
@@ -155,42 +27,42 @@ function set_plugin_def ($plugin_id, $text, $sample_rate){
 //     }
 // }
 
-function generateSelect($name = '', $array = array(), $crt_selection, $input_array = array()) {
-    $other_name = "";
-    $other_value = "";
-    if (sizeof($input_array) == 2){
-	$other_name = $input_array['name'];
-	$other_value = $input_array['value'];
-    }
-    $html = "\n<form method=\"POST\">
-<input type=\"hidden\" name=\"$other_name\" value=\"$other_value\">
-    <select id=\"customers\" name=\"".$name."\" onchange=\"this.form.submit();\">
-      <option value=\"nada\">==Choose existing==</option>";
-    foreach ($array as $id => $value) {
-	$selected="";
-	if (!is_null($crt_selection) && $value == $crt_selection) {$selected=" selected=\"selected\" ";}
-	$html .= "<option id=$id value=".$value."$selected>".$value."</option>";
-    }
-
-    $html .= "</select></form>";
-    return $html;
-}
+// function generateSelect($name = '', $array = array(), $crt_selection, $input_array = array()) {
+//     $other_name = "";
+//     $other_value = "";
+//     if (sizeof($input_array) == 2){
+// 	$other_name = $input_array['name'];
+// 	$other_value = $input_array['value'];
+//     }
+//     $html = "\n<form method=\"POST\">
+// <input type=\"hidden\" name=\"$other_name\" value=\"$other_value\">
+//     <select id=\"customers\" name=\"".$name."\" onchange=\"this.form.submit();\">
+//       <option value=\"nada\">==Choose existing==</option>";
+//     foreach ($array as $id => $value) {
+// 	$selected="";
+// 	if (!is_null($crt_selection) && $value == $crt_selection) {$selected=" selected=\"selected\" ";}
+// 	$html .= "<option id=$id value=".$value."$selected>".$value."</option>";
+//     }
+// 
+//     $html .= "</select></form>";
+//     return $html;
+// }
 
 function generateStatusbar() {
     return '<div id="progress_container"><div id="progress_bar" style="width: 0%"></div></div>';;
 }
 
-function generateUpload($get_array) {
-    $selection = null;
-    if (array_key_exists('menu_selection', $get_array)) {
-      $selection = explode(",",$get_array['menu_selection']);
-    };
-    $customer=''; $host='';
-
+function generateUpload($customer, $host) {
+//     $selection = null;
+//     if (array_key_exists('menu_selection', $get_array)) {
+//       $selection = explode(",",$get_array['menu_selection']);
+//     };
+//     $customer=''; $host='';
+// 
     $body="";
-    if (sizeof($selection) == 2){
-	$customer = $selection[0];
-	$host = $selection[1];
+//     if (sizeof($selection) == 2){
+// 	$customer = $selection[0];
+// 	$host = $selection[1];
 	$url="../cgi-bin/munin-cgi-html/$customer/index.html";
 
 	$file_handle = fopen("scripts/load_body.html", "r");
@@ -200,9 +72,9 @@ function generateUpload($get_array) {
 	fclose($file_handle);
 	$body = str_replace(array('$$customer$$','$$host$$', '$$url$$'), array($customer,$host, $url), $body);
 
-    } else {
+//     } else {
 // 	$body .= '<form id="fileupload" action="scripts/upload.class.php?customer=customer&host=host" method="POST" enctype="multipart/form-data"></form>';
-    }
+//     }
     $body .= "
 	<div id=\"local_config\" customer=\"".$customer."\" hostname=\"".$host."\" view_mode=\"view\">
 	</div>\n";
@@ -220,67 +92,100 @@ function generateUpload($get_array) {
 // // <button id="create-user" class="some_shit">Some stats</button>
 // }
 
-function generateMenuInTable() {
-    $html = '<table  class="tableMain">
-  <tr>
-    <td width=185 class="my_selector">
-      <input type="image" src="img/graph_mode.jpg" name="image" class="switch_selector" title="Switch to edit mode">
-      <div class="selector">
-	'. generateMenu().'
-      </div>
-      <div class="selector" style="display: none;">
-	<input id="autocomplete_customers" class="defaultText" title="Enter customer" type="text" />
-	<input id="autocomplete_hosts" class="defaultText" title="Enter hostname" type="text"/>
-      </div>
-    </td>
-    <td >
-	<div id="edit_plugins_forms_placer" style="display:none;"></div>
-	<div class="selector" style="width:100%; height:60px; overflow:auto;display:none;valign:top;" title="Edit plugin">
-	    <ul id="change_edit_plugins" class="links_plugins"></ul>
-	</div>
-	<div class="selector" style="width:100%; height:60px; overflow:auto;valign:top;" title="View plugin">
-	    <ul id="change_view_plugins" class="links_plugins"></ul>
-	</div>
-    </td>
-  </tr>
-</table><br/>
-<div id="errors">Errors</div>
-';
-    return $html;
-}
+// function edit_customer_div(){
+//   $html = '
+// <div id="edit_customers" title="Edit customers">
+//     <fieldset class="myfields">
+//       <div class="inputdata">
+// 	  <label>Customer: </label>
+// 	  <input type="text" id="autocomplete_customers" class="defaultText" title="Enter customer"/>
+// 	  <a class="select_customer noselect">&nbsp;</a>
+//       </div>
+//     </fieldset>
+//     <div class="cust_buttons">
+//         <a class="add_customer noselect">Select/Add customer</a>
+//         <a class="add_host noselect">Add new host</a>
+//     </div>
+// </div>';
+//   return $html;
+// }
 
-function generateMenu() {
-    $html = '<form name="form_menu" method="get" action="index.php"> 
-<input type="hidden" name="menu_selection" value="qwe" />
-<ul class="menu" id="menu">
-	<li><a class="menulink">Select Customer</a>
-		<ul>';
-    $all_customers = get_customers_sql();
-    foreach ($all_customers as $cust) {
-	$all_hosts = get_hosts_sql($cust);
+// function generateMenuInTable() {
+//     $html = '<table  class="tableMain">
+//   <tr>
+//     <td width=185 class="my_selector">
+//       <input type="image" src="img/graph_mode.jpg" name="image" class="switch_selector" title="Switch to edit mode">
+//       <div class="selector">
+// 	'. generateMenu().'
+//       </div>
+//       <div class="selector" style="display: none;">
+// 	  <a class="edit_menu noselect">Edit Customers</a>
+//       </div>
+//     </td>
+//     <td >
+// 	<div id="edit_plugins_forms_placer" style="display:none;">'.edit_customer_div().'</div>
+// 	<div class="selector" style="width:100%; height:60px;overflow:auto;valign:top;display:none;" title="Edit plugin">
+// 	    <ul id="change_edit_plugins" class="links_plugins"></ul>
+// 	</div>
+// 	<div class="selector" style="width:100%; height:60px;overflow:auto;valign:top;" title="View plugin">
+// 	    <ul id="change_view_plugins" class="links_plugins"></ul>
+// 	</div>
+//     </td>
+//   </tr>
+// </table><br/>
+// <div id="errors">Errors</div>
+// ';
+//     return $html;
+// }
+// 
+// function generateMenu() {
+//     $html = '<form name="form_menu" method="get" action="index.php"> 
+// <input type="hidden" name="menu_selection" value="" />
+// <ul class="menu" id="menu">
+// 	<li><a class="menulink noselect">Select Customer</a>
+// 		<ul>';
+//     $all_customers = get_customers_sql();
+// //     sort($all_customers);
+//     foreach ($all_customers as $cust) {
+// 	$all_hosts = get_hosts_sql($cust);
+// 
+// // 	if( !sizeof($all_hosts)){ continue;};
+// 	$html .= "
+// 			<li><a class=\"sub\">$cust</a>
+// 				<ul>";
+// 	$first = ' class="topline"';
+// 	foreach ($all_hosts as $host) {
+// 	    $html .= "
+// 				    <li$first><a href=\"#\" onclick=\"document.form_menu.menu_selection.value='$cust,$host';document.form_menu.submit();\" >$host</a></li>";
+// 	    $first = "";
+// 	}
+// 	$html .= "
+// 				</ul>
+// 			</li>";
+//     }
+//     $html .= '
+// 		</ul>
+// 	</li>
+// </ul> 
+// </form>
+// <script type="text/javascript">	var menu=new menu.dd("menu");menu.init("menu","menuhover");</script>';
+// // <br/><br/><br/>
+//     return $html;
+// }
 
-	if( !sizeof($all_hosts)){ continue;};
-	$html .= "
-			<li><a class=\"sub\">$cust</a>
-				<ul>";
-	$first = ' class="topline"';
-	foreach ($all_hosts as $host) {
-	    $html .= "
-				    <li$first><a href=\"#\" onclick=\"document.form_menu.menu_selection.value='$cust,$host';document.form_menu.submit();\" >$host</a></li>";
-	    $first = "";
-	}
-	$html .= "
-				</ul>
-			</li>";
-    }
-    $html .= '
-		</ul>
-	</li>
-</ul> 
-</form>
-<script type="text/javascript">	var menu=new menu.dd("menu");menu.init("menu","menuhover");</script>';
-// <br/><br/><br/>
-    return $html;
+function get_small_head () {
+    return '<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Statistics graphs</title>
+	<link rel="stylesheet" href="css/start_menu.css">
+	<link rel="stylesheet" href="css/jquery-ui-1.10.0.css" /> 
+	</script src="js/web/jquery-1.9.0.js">
+	</script src="js/web/jquery-ui-1.10.0.js">
+
+    </head>
+    <body>';
 }
 
 function get_head () {
@@ -290,51 +195,36 @@ function get_head () {
         <meta charset="utf-8" />
         <title>Statistics graphs</title>
 
-	<!--  ####################### CSS scripts ####################### -->
-	<link rel="stylesheet" href="css/dropdown_menu.css">
-
+	<!--  ####################### CSS scripts #######################
 	<!-- Bootstrap CSS Toolkit styles -->
-	<!-- <link rel="stylesheet" href="http://blueimp.github.com/cdn/css/bootstrap.min.css"> -->
+	<!-- <link rel="stylesheet" href="http://blueimp.github.com/cdn/css/bootstrap.css"> -->
 	<link rel="stylesheet" href="css/bootstrap.css">
 	<!-- CSS to style the file input field as button and adjust the Bootstrap progress bars -->
 	<!-- <link rel="stylesheet" href="https://raw.github.com/blueimp/jQuery-File-Upload/master/css/jquery.fileupload-ui.css"> -->
 	<link rel="stylesheet" href="css/jquery.fileupload-ui.css">
-	<link rel="stylesheet" href="css/jquery-ui-1.9.2.css" /> 
-	<!-- Shim to make HTML5 elements usable in older Internet Explorer versions -->
-	<!--[if lt IE 9]><script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+	<!-- http://jqueryui.com/download/ -->
+	<link rel="stylesheet" href="css/jquery-ui-1.10.0.css" /> 
 
 	<!-- Generic page styles last, to let bootstrap do what it wants and overwrite what we want -->
 	<link rel="stylesheet" href="css/style.css">
 
 
 	<!--  ####################### Java scripts ####################### -->
-	<!-- <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script> -->
-	<script src="js/web/jquery-1.8.3.js"></script>
-	<script src="js/web/jquery-ui-1.9.2.js"></script> 
-
-	<script type="text/javascript" src="js/dropdown_menu.js"></script>
-	<script src="js/me_update_elements.js"></script>
-        <!--  <script type="text/javascript" src="js/progress_bar.js"></script> -->
-
+	<!-- http://jquery.com/download/ -->
+	<script src="js/web/jquery-1.9.0.js"></script>
+	<script src="js/web/jquery-ui-1.10.0.js"></script>
 	<!-- The Templates plugin is included to render the upload/download listings -->
-	<!-- <script src="http://blueimp.github.com/JavaScript-Templates/tmpl.min.js"></script> -->
+	<!-- <script src="http://blueimp.github.com/JavaScript-Templates/tmpl.js"></script> -->
 	<script src="js/web/tmpl.js"></script>
+	
+	<script src="js/jquery.fileupload.js"></script>		<!-- The basic File Upload plugin -->
+	<script src="js/jquery.fileupload-fp.js"></script>	<!-- The File Upload file processing plugin -->
+	<script src="js/jquery.fileupload-ui.js"></script>	<!-- The File Upload user interface plugin -->
+	<script src="js/locale.js"></script>			<!-- The localization script -->
+	<script src="js/main.js"></script>			<!-- The main application script -->
 
-	<!-- The Iframe Transport is required for browsers without support for XHR file uploads -->
-	<script src="js/jquery.iframe-transport.js"></script>
-	<!-- The basic File Upload plugin -->
-	<script src="js/jquery.fileupload.js"></script>
-	<!-- The File Upload file processing plugin -->
-	<script src="js/jquery.fileupload-fp.js"></script>
-	<!-- The File Upload user interface plugin -->
-	<script src="js/jquery.fileupload-ui.js"></script>
-	<!-- The localization script -->
-	<script src="js/locale.js"></script>
-	<!-- The main application script -->
-	<script src="js/main.js"></script>
-	<!-- The XDomainRequest Transport is included for cross-domain file deletion for IE8+ -->
-	<!--[if gte IE 8]><script src="js/cors/jquery.xdr-transport.js"></script><![endif]-->
- 
+	<script src="js/me_update_elements.js"></script>
+        <script src="js/progress_bar.js"></script>
 
     </head>
     <body>';
@@ -342,6 +232,9 @@ function get_head () {
 
 function get_footer() {
     return '
+
+
+
     </body>
 </html>';
 }

@@ -1,29 +1,31 @@
 <?php
-//             limitConcurrentUploads: 5,
-//             autoUpload: true,
-//             maxFileSize: undefined,
+  print_r($_GET);
+  // inotifywait -m -r --format '%w%f' -e close_write /var/www/html/coco/scripts/uploads/
+  // error_reporting(E_STRICT);
 
-// print_r($_POST);
-// inotifywait -m -r --format '%w%f' -e close_write /var/www/html/coco/scripts/uploads/
-// error_reporting(E_STRICT);
+  //  phpinfo();
 
-include_once('scripts/config.inc.php');
-connect_db();
+  include_once('scripts/config.inc.php');
+  connect();
 
-//start page
-echo get_head();
+  //start page
 
-// menu
-echo generateMenuInTable();
+  // menu
+  // echo generateMenuInTable();
+  if(isset($_GET['customer']) && isset($_GET['hostname']) && !validate_sql($_GET['customer'], $_GET['hostname'])){
+    echo get_head();
+    $customer = $_GET['customer'];
+    $hostname = $_GET['hostname'];
+    // upload window
+    echo generateUpload($customer, $hostname);
+    // progress bar at bottom
+    echo generateStatusbar();
+    echo get_footer();
+  } else {
+    echo get_small_head();
+  }
 
-// upload window
-echo generateUpload($_GET);
+  disconnect();
 
-close_db();
-
-// progress bar at bottom
-echo generateStatusbar();
-
-//endpage
-echo get_footer();
+  //endpage
 ?>

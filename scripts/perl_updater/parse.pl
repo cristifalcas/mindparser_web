@@ -218,6 +218,7 @@ sub logparser_worker {
 }
 
 sub addFilesDB {
+# move from dirs to path, rename files starting with dot delete empty dirs
     my ($file, $dbh) = @_;
     if ( -f $file ) {
 	DEBUG "Try to insert file $file.\n";
