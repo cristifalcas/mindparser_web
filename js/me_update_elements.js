@@ -24,33 +24,7 @@ function createPluginHTMLElements (plugin_id, plugin_name) {
     return [form, link_edit, link_graphs];
 }
 
-function clear_plugin_ids (ids_arr){
-    for (var i = 0; i < ids_arr.length; i++) {
-      // close if dialog is opened
-      if ( $("#div_edit_plugin_"+ids_arr[i]).closest('.ui-dialog').is(':visible') === true ) {
-	  $("#div_edit_plugin_"+ids_arr[i]).dialog( "close" );
-      }
-      // delete parent of div_edit_plugin_i
-      var div = $( "div#div_edit_plugin_"+ids_arr[i]);
-      if (div.length != 1) {
-	  alert ("Probleme gicule!!"+ids_arr[i]+" length="+div.length+" arr="+ids_arr);
-      }
-      div[0].parentNode.parentNode.removeChild(div[0].parentNode);
-
-      // delete parent of link_edit_plugin_i
-      var a = $( "a#link_edit_plugin_"+ids_arr[i]);
-      if (a.length != 1) {
-	  alert ("Probleme :((!!"+ids_arr[i]+" length="+a.length+" arr="+ids_arr);
-      }
-      a[0].parentNode.parentNode.removeChild(a[0].parentNode);
-
-      // delete parent of link_graph_plugin_i
-      var b = $( "a#link_graph_plugin_"+ids_arr[i]);
-      b[0].parentNode.parentNode.removeChild(a[0].parentNode);
-  }
-}
-
-function get_plugin_text(response, textStatus, XMLHttpRequest) {
+function get_plugin_text_success(response, textStatus, XMLHttpRequest) {
     if($.isEmptyObject(response)){
 	  return;
     };
@@ -71,11 +45,7 @@ function set_plugin_text_success(response, textStatus, XMLHttpRequest) {
 }
 
 function write_error_div(text) {
-//     var pluginsDiv;
-//     pluginsDiv = document.getElementById("errors");
-//     pluginsDiv.innerHTML = "errors in set_plugin_text: "+text;
     $("#errors").text("errors in: "+text).show(0);
-//     ;
 }
 
 function rebuild_plugin_success(response, textStatus, XMLHttpRequest) {
@@ -142,8 +112,6 @@ function add_plugin_ids(plugins, plugins_arr){
 	  .button({icons: {secondary: "ui-icon-help"}, text: false})
 	  .appendTo($('.ui-dialog-buttonpane'))
 	  .click(function(){$(event.target).dialog('close');});
-
-// 	    $('<input />', {'id': 'select_rate', 'name':'value'}).appendTo($('.ui-dialog-buttonpane')); //.spinner()
 	},
 	buttons: {
 	    Submit: function() {
@@ -160,8 +128,6 @@ function add_plugin_ids(plugins, plugins_arr){
 	},
 	close: function() {
 	    $('a.link_help_me').remove() ;
-// 	    $( this ).dialog( "close" );
-// 	    allFields.val( "" ).removeClass( "ui-state-error" );
 	}
       };
 
@@ -180,8 +146,7 @@ function add_plugin_ids(plugins, plugins_arr){
       $('a#link_edit_plugin_'+plugin_id).click(function() {
 	  var arr = get_customer_host_name();
 	  var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugin_text", extra:{id:plugin_id}} };
-	  post_data_home(JSONstring, get_plugin_text);
-// 	    $('.textarea_edit_plugin_'+plugin_id)[0].innerHTML = "";
+	  post_data_home(JSONstring, get_plugin_text_success);
 	  $('#textarea_edit_plugin_'+plugin_id)[0].readOnly = true;
 	  dlg.dialog("open");
 	  return false;
@@ -189,6 +154,32 @@ function add_plugin_ids(plugins, plugins_arr){
 
       return;
     });
+}
+
+function clear_plugin_ids (ids_arr){
+    for (var i = 0; i < ids_arr.length; i++) {
+      // close if dialog is opened
+      if ( $("#div_edit_plugin_"+ids_arr[i]).closest('.ui-dialog').is(':visible') === true ) {
+	  $("#div_edit_plugin_"+ids_arr[i]).dialog( "close" );
+      }
+      // delete parent of div_edit_plugin_i
+      var div = $( "div#div_edit_plugin_"+ids_arr[i]);
+      if (div.length != 1) {
+	  alert ("Probleme gicule!!"+ids_arr[i]+" length="+div.length+" arr="+ids_arr);
+      }
+      div[0].parentNode.parentNode.removeChild(div[0].parentNode);
+
+      // delete parent of link_edit_plugin_i
+      var a = $( "a#link_edit_plugin_"+ids_arr[i]);
+      if (a.length != 1) {
+	  alert ("Probleme :((!!"+ids_arr[i]+" length="+a.length+" arr="+ids_arr);
+      }
+      a[0].parentNode.parentNode.removeChild(a[0].parentNode);
+
+      // delete parent of link_graph_plugin_i
+      var b = $( "a#link_graph_plugin_"+ids_arr[i]);
+      b[0].parentNode.parentNode.removeChild(a[0].parentNode);
+  }
 }
 
 function updatePlugins(response, textStatus, XMLHttpRequest) {
@@ -231,18 +222,34 @@ function updatePlugins(response, textStatus, XMLHttpRequest) {
 //     }
 // }
 
-function success_progress_bar(response, textStatus, XMLHttpRequest) {
-    var clientid = response.percent;
-    var pluginsDiv = document.getElementById("test_diff");
-    pluginsDiv.innerHTML = "testes diff2 ok: "+clientid;
-}
+// function success_progress_bar(response, textStatus, XMLHttpRequest) {
+//     var clientid = response.percent;
+//     var pluginsDiv = document.getElementById("test_diff");
+//     pluginsDiv.innerHTML = "testes diff2 ok: "+clientid;
+// }
 
-function post_data_home( JSONstring, ctrl_funct, async) {
-    async = typeof async !== 'undefined' ? async : true;
+// function switch_select() {
+//     var hiddenEls  = $("div.selector").filter(":hidden");
+//     var visibleEls = $("div.selector").filter(":visible");
+//     $.each( hiddenEls, function(index, item){$(item).show();});
+//     $.each( visibleEls, function(index, item){$(item).hide();});
+//     if ($('div#local_config').attr('view_mode') == 'view'){
+// 	$('input.switch_selector').attr('src', "img/serp_molot.png");
+// 	$('input.switch_selector').attr('title', "Switch to view mode");
+// 	$('div#local_config').attr('view_mode', 'edit');
+//     } else if ($('div#local_config').attr('view_mode') == 'edit'){
+// 	$('input.switch_selector').attr('src', "img/graph_mode.jpg");
+// 	$('input.switch_selector').attr('title', "Switch to edit mode");
+// 	$('div#local_config').attr('view_mode', 'view');
+//     }
+//     
+//     return false;
+// }
+
+function post_data_home( JSONstring, ctrl_funct) {
     $.ajax({
 	type: "POST",
 	url: "scripts/get_info.php",
-	aync:async,
 	data: { json: JSON.stringify(JSONstring) },
 	success: ctrl_funct,
 	failure: function(errMsg) {alert(errMsg);}
@@ -252,42 +259,15 @@ function post_data_home( JSONstring, ctrl_funct, async) {
 function get_customer_host_name() {
     var customer = $('div#local_config').attr('customer') || '';
     var hostname = $('div#local_config').attr('hostname') || '';
-//     write_error_div(customer);
 //     var url = $('#fileupload').prop('action');
-//     if(typeof url === 'undefined'){
-// 	return;
-//     };
+//     if(typeof url === 'undefined'){return;};
 //     var arr = url.split('?')[1].split('&');
 //     var customer = arr[0].replace(/^customer=/, "");
 //     var hostname = arr[1].replace(/^host=/, "");
     return [customer, hostname];
 }
 
-function switch_select() {
-    var hiddenEls  = $("div.selector").filter(":hidden");
-    var visibleEls = $("div.selector").filter(":visible");
-    $.each( hiddenEls, function(index, item){$(item).show();});
-    $.each( visibleEls, function(index, item){$(item).hide();});
-    if ($('div#local_config').attr('view_mode') == 'view'){
-	$('input.switch_selector').attr('src', "img/serp_molot.png");
-	$('input.switch_selector').attr('title', "Switch to view mode");
-	$('div#local_config').attr('view_mode', 'edit');
-    } else if ($('div#local_config').attr('view_mode') == 'edit'){
-	$('input.switch_selector').attr('src', "img/graph_mode.jpg");
-	$('input.switch_selector').attr('title', "Switch to edit mode");
-	$('div#local_config').attr('view_mode', 'view');
-    }
-    
-    return false;
-}
-
-function updates() {
-    var arr = get_customer_host_name();
-    var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugins", extra:{}} };
-    post_data_home(JSONstring, updatePlugins);
-}
-
-function update_downloads() {
+function update_blueimp_downloads() {
     // example result: from http://wikitiki.mindsoft.com/mindparser/scripts/upload.class.php?customer=w&host=test1
     $.ajax({
 	url: $('#fileupload').prop('action'),
@@ -312,199 +292,19 @@ function update_downloads() {
 	$.each(existing_in_page, function (index, item){ $(existing_in_page[index].item_obj).remove();});
 	// add new files
 	$(this).fileupload('option', 'done').call(this, null, {result: {"files": remaining_on_site}});
-
     });
 }
 
-function get_hosts_success(response, textStatus, XMLHttpRequest) {
-    write_error_div(JSON.stringify(response));
-}
-
-function create_dialog(div_id, link_name) {
+function updates() {
     var arr = get_customer_host_name();
-    var customer = arr[0],
-	hostname = arr[1];
-
-//     write_error_div("_"+customer+"_");
-    if (customer === "") {
-      $("a.add_host").hide();
-    }
-    $("div.inputdata").hide();
-//     var table = '\
-//   <table>\
-//     <tbody>\
-//       <td><a class="add_customer" onselectstart=\'return false;\'>Add new customer</a></td>\
-//       <td><a class="add_host" onselectstart=\'return false;\'>Add new host</a></td>\
-//     </tbody>\
-//   </table>';
-//     div_id = div_id.substring(1);
-//     var div = $(document.createElement('div'))
-// 	.addClass(div_id)
-// 	.attr({ title : "Edit customer "+customer })
-// 	.append(table);
-//     $('div#edit_plugins_forms_placer').append(div);
-//
-//
-
-    
-//     <div id="div_edit_plugin_'+plugin_id+'" title="Edit stats for '+plugin_name+'" class="div_edit_plugin">\
-//     var div = $.create("div").hide();
-//     this.$OuterDiv = $('div')
-//     .hide()
-
-//     var d = $(document.createElement('div'));
-//     $('div#edit_plugins_forms_placer').append(d);
-//     .hide()
-//     .append($('<table></table>')
-//         .attr({ cellSpacing : 0 })
-//         .addClass("text")
-//     );
-
-// <div id="edit_customers" title="Edit customer" style="display:none;">
-//   <table class="edit_customers">
-//     <tbody>
-//       <tr>
-// 	<td><label>Customer: </label></td>
-// 	<td><input type="text" id="autocomplete_customers" class="defaultText" title="Enter customer" style="width:100%;float:left"/></td>
-// 	<td><a class="select_customer" onselectstart=\'return false;\'>&hellip;</a></td>
-//       </tr>
-// 	  <td></td><td></td><td></td>
-//       <tr>
-//       </tr>
-//     </tbody>
-//   </table>
-//   <table class="edit_customers">
-//     <tbody>
-// 	<td><a class="add_customer" onselectstart=\'return false;\'>Add new customer</a></td>
-// 	<td><a class="add_host" onselectstart=\'return false;\'>Add new host</a></td>
-//   </tbody>
-//   </table>
-// <!--  <input id="autocomplete_customers" class="defaultText" title="Enter customer" type="text" />
-// <input id="autocomplete_hosts" class="defaultText" title="Enter hostname" type="text"/>-->
-// </div>
-}
-
-function input_text() {
-    $(".defaultText").focus(function(srcc){
-        if ($(this).val() == $(this)[0].title){
-            $(this).removeClass("defaultTextActive");
-            $(this).val("");
-        }
-    });
-    
-    $(".defaultText").blur(function(){
-        if ($(this).val() == ""){
-            $(this).addClass("defaultTextActive");
-            $(this).val($(this)[0].title);
-        }
-    });
-    
-    $(".defaultText").blur();
-}
-
-function get_customer_exists_success(response, textStatus, XMLHttpRequest) {
-    if (response) {
-	$( "a.select_customer" ).button({icons: {primary: 'ui-icon-circle-check'}});
-// 	$("a.select_customer").css("background-color","yellow");
-// 	$("a.select_customer").text('value')
-    } else {
-	$( "a.select_customer" ).button({icons: {primary: 'ui-icon-circle-plus'}});
-    }
-}
-
-function complete_cust() {
-    $( "#autocomplete_customers" )
-    .bind( "keydown", function( event ) {
-	if ( event.keyCode === $.ui.keyCode.TAB && $( this ).data( "autocomplete" ).menu.active ) {
-	    event.preventDefault();
-	}
-    })
-    .autocomplete({
-	source: function( request, response ) {
-// 	    write_error_div(request.term);
-	    var JSONstring = { customer:"", hostname:"", data:{function:"get_customers_autocomplete", extra:{request:request.term}} };
-	    post_data_home(JSONstring, response);
-	    var JSONstring = { customer:request.term, hostname:"", data:{function:"get_customer_exists", extra:{}} };
-	    post_data_home(JSONstring, get_customer_exists_success);
-	},
-	focus: function() {/*item is focused in the list*/return false;},
-	select: function( event, ui ) {
-	    get_customer_exists_success(true);
-// 	    log( ui.item ? "Selected: " + ui.item.label : "Nothing selected, input was " + this.value);
-	    },
-	});
-}
-
-function test() {
-  var div_id = "#edit_customers",
-      link_name = "a.edit_menu";
-  create_dialog(div_id, link_name);
-
-  $( div_id ).dialog({
-    autoOpen: false,
-    height: 300,
-    width: 350,
-    modal: true,
-    open: function(event, ui){
-    },
-    buttons: {
-      Submit: function() {
-      },
-      Cancel: function() {
-      $( this ).dialog( "close" );
-      },
-      'Delete customer': function() {
-      },
-    },
-    close: function() {
-    },
-  });
-
-  $( link_name ).click(function() {
-      var arr = get_customer_host_name();
-      var JSONstring = { customer:arr[0], hostname:'', data:{function:"get_hosts", extra:{} }};
-      post_data_home(JSONstring, get_hosts_success);
-      $( div_id ).dialog( "open" );
-  });
-  
-  $( "a.add_customer" ).button().click(function() {
-    $("a.add_host").hide();
-    $("a.add_customer").hide();
-    $("div.inputdata").show();
-    complete_cust();
-  });
-  $( "a.add_host" ).button().click(function() {
-  });
-  $( "a.select_customer" ).button().click(function() {
-    $("a.add_host").show();
-    $("a.add_customer").show();
-    $("div.inputdata").hide();
-
-    write_error_div($( "#autocomplete_customers" ).result());
-    var JSONstring = { customer:'', hostname:'', data:{function:$( "#autocomplete_customers" ).result(), extra:{} }};
-    post_data_home(JSONstring, get_hosts_success);
-
-    $("#autocomplete_customers").autocomplete("destroy");
-    $("input#autocomplete_customers").val('');
-    $( "a.select_customer" ).button({icons: {primary: ''}});
-    $( "#combobox" ).next().val('');
-    
-  });
-
-//   $( "a.add_customer" )
-}
-
-function init() {
-    $( "input.switch_selector" ).click(function () {switch_select();});
-    input_text();
-    test();
-switch_select();
+    var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugins", extra:{}} };
+    post_data_home(JSONstring, updatePlugins);
 }
 
 $(function() {
-  init()
+//   $( "input.switch_selector" ).click(function () {switch_select();});
   updates();
   var t1=setInterval('updates()', 1000);
   // wait 3 seconds for the main upload script to finish
-  setTimeout(function(){setInterval('update_downloads()', 300)},3000);
+  setTimeout(function(){setInterval('update_blueimp_downloads()', 300)},3000);
 });

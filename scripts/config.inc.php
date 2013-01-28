@@ -91,24 +91,24 @@ function generateUpload($customer, $host) {
 // ';
 // // <button id="create-user" class="some_shit">Some stats</button>
 // }
-
-// function edit_customer_div(){
-//   $html = '
-// <div id="edit_customers" title="Edit customers">
-//     <fieldset class="myfields">
-//       <div class="inputdata">
-// 	  <label>Customer: </label>
-// 	  <input type="text" id="autocomplete_customers" class="defaultText" title="Enter customer"/>
-// 	  <a class="select_customer noselect">&nbsp;</a>
-//       </div>
-//     </fieldset>
-//     <div class="cust_buttons">
-//         <a class="add_customer noselect">Select/Add customer</a>
-//         <a class="add_host noselect">Add new host</a>
-//     </div>
-// </div>';
-//   return $html;
-// }
+/*
+function edit_customer_div(){
+  $html = '
+<div id="edit_customers" title="Edit customers">
+    <fieldset class="myfields">
+      <div class="inputdata">
+	  <label>Customer: </label>
+	  <input type="text" id="autocomplete_customers" class="defaultText" title="Enter customer"/>
+	  <a class="select_customer noselect">&nbsp;</a>
+      </div>
+    </fieldset>
+    <div class="cust_buttons">
+        <a class="add_customer noselect">Select/Add customer</a>
+        <a class="add_host noselect">Add new host</a>
+    </div>
+</div>';
+  return $html;
+}*/
 
 // function generateMenuInTable() {
 //     $html = '<table  class="tableMain">
@@ -172,6 +172,18 @@ function generateUpload($customer, $host) {
 // // <br/><br/><br/>
 //     return $html;
 // }
+
+function generate_customers() {
+    $customers = get_customers_sql();
+// return edit_customer_div();
+print_r($customers);
+// <div id="accordion">
+// <h3>First header</h3>
+// <div>First content panel</div>
+// <h3>Second header</h3>
+// <div>Second content panel</div>
+// </div>
+}
 
 function get_small_head () {
     return '<!DOCTYPE html>

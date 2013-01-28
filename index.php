@@ -23,6 +23,8 @@
     echo get_footer();
   } else {
     echo get_small_head();
+    echo generate_customers();
+    echo get_footer();
   }
 
   disconnect();
