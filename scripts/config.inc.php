@@ -53,28 +53,16 @@ function generateStatusbar() {
 }
 
 function generateUpload($customer, $host) {
-//     $selection = null;
-//     if (array_key_exists('menu_selection', $get_array)) {
-//       $selection = explode(",",$get_array['menu_selection']);
-//     };
-//     $customer=''; $host='';
-// 
     $body="";
-//     if (sizeof($selection) == 2){
-// 	$customer = $selection[0];
-// 	$host = $selection[1];
-	$url="../cgi-bin/munin-cgi-html/$customer/index.html";
+    $url="../cgi-bin/munin-cgi-html/$customer/index.html";
 
-	$file_handle = fopen("scripts/load_body.html", "r");
-	while (!feof($file_handle)) {
-	  $body .= fgets($file_handle);
-	}
-	fclose($file_handle);
-	$body = str_replace(array('$$customer$$','$$host$$', '$$url$$'), array($customer,$host, $url), $body);
+    $file_handle = fopen("scripts/load_body.html", "r");
+    while (!feof($file_handle)) {
+      $body .= fgets($file_handle);
+    }
+    fclose($file_handle);
+    $body = str_replace(array('$$customer$$','$$host$$', '$$url$$'), array($customer,$host, $url), $body);
 
-//     } else {
-// 	$body .= '<form id="fileupload" action="scripts/upload.class.php?customer=customer&host=host" method="POST" enctype="multipart/form-data"></form>';
-//     }
     $body .= "
 	<div id=\"local_config\" customer=\"".$customer."\" hostname=\"".$host."\" view_mode=\"view\">
 	</div>\n";
@@ -173,10 +161,52 @@ function edit_customer_div(){
 //     return $html;
 // }
 
+function generateAddCustomer() {
+  return '
+<div id="edit_customer" title="Edit customer">
+    <label>Customer: </label>
+    <input type="text" class="defaultText" title="Enter customer name"/>
+    <br/> <br/>
+    <table id="hosts" class="ui-widget ui-widget-content">
+	<thead>
+	    <tr class="ui-widget-header ">
+		<th>Host name</th>
+		<th>IP</th>
+		<th>User</th>
+		<th>Password</th>
+	    </tr>
+	</thead>
+	<tbody>
+	    <tr id="add_new_host">
+		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" size="18" title="host name"/></td>
+		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" size="15" title="ip addr"/></td>
+		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" size="18" title="user"/></td>
+		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" size="18" title="pass"/></td>
+	    </tr>
+	</tbody>
+    </table>
+    <br/>
+    <p>* Only customer and host names are required: a-z0-9_.</p>
+</div>
+<button class="add_customer_btn">Add new customer</button>';
+}
+
 function generate_customers() {
     $customers = get_customers_sql();
+    $html = '<div id="accordion">';
+    foreach ($customers as $customer) {
+	$hosts = get_hosts_sql($customer);
+	$html .= "<h3>$customer</h3>\n<div>\n";
+	$html .= "<button class=\"add_customer_btn\" data-id=\"$customer\">Edit customer</button><br/>\n";
+	foreach ($hosts as $host) {
+	    $html .= "<a href=\"?customer=$customer&hostname=$host\" id_cust=\"$customer\" host_name=\"$host\">Open host $host</a><br/> \n";
+	}
+	$html .= "</div>\n";
+    }
+    return $html."</div>\n";
+    
 // return edit_customer_div();
-print_r($customers);
+// print_r($customers);
 // <div id="accordion">
 // <h3>First header</h3>
 // <div>First content panel</div>
@@ -191,10 +221,13 @@ function get_small_head () {
     <head>
         <meta charset="utf-8" />
         <title>Statistics graphs</title>
-	<link rel="stylesheet" href="css/start_menu.css">
 	<link rel="stylesheet" href="css/jquery-ui-1.10.0.css" /> 
-	</script src="js/web/jquery-1.9.0.js">
-	</script src="js/web/jquery-ui-1.10.0.js">
+	<link rel="stylesheet" href="css/style.css">
+	<link rel="stylesheet" href="css/start_menu.css">
+
+	<script src="js/web/jquery-1.9.0.js"></script>
+	<script src="js/web/jquery-ui-1.10.0.js"></script>
+	<script src="js/me_first_page.js"></script>
 
     </head>
     <body>';

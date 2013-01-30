@@ -1,5 +1,30 @@
 body {
-  margin:2px; 
-  font-size: 100%;
+  margin:12px; 
+/*   font-size: 80%; */
   background:white;
+}
+
+.add_customer_btn {
+font-size: 0.8em
+}
+
+/*#rem_host_btn > * {
+    background-color: green;
+    border: 1px solid #132b14;
+    color:#132b14;
+}*/
+
+#accordion {
+  width: 250px;
+}
+
+#accordion, .ui-accordion-header {
+  font-size: 0.9em;
+  background: rgb(246, 250, 225);
+}
+
+
+.ui-accordion-content {
+  background: rgb(220, 248, 220);
+  font-size: 0.8em;
 }

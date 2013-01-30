@@ -26,6 +26,7 @@ function close_db() {
 
 function get_customers_sql() {
     global $customers_table;
+    $customers = "";
     $query = "select * from $customers_table where id>0 order by name";
     $rs = mysql_query($query) or error_log("get_customers: $query || ".mysql_error());
     while($row = mysql_fetch_array($rs)){
@@ -34,23 +35,29 @@ function get_customers_sql() {
     return $customers;
 }
 
-function get_customers_autocomplete_sql($str) {
+function get_customer_id_sql ($customer_name) {
     global $customers_table;
-//     error_log($str);
-    $query = "select name from $customers_table where lower(name) like '".$str."%' order by 1"; // LIMIT 0, 10
-    $rs = mysql_query($query) or error_log("get_customers: $query || ".mysql_error());
-    $arr = array();
-    while($row = mysql_fetch_array($rs)){
-	array_push($arr, $row['name']);
-    }
-    return $arr;
-    
+    $query = "select id from $customers_table where name='$customer_name'";
+    $rs = mysql_query($query) or error_log("get_customer_id_sql: $query || ".mysql_error());
+    $row = mysql_fetch_array($rs);
+    return $row['id'];
 }
+
+// function get_customers_autocomplete_sql($str) {
+//     global $customers_table;
+//     $query = "select name from $customers_table where lower(name) like '".$str."%' order by 1"; // LIMIT 0, 10
+//     $rs = mysql_query($query) or error_log("get_customers: $query || ".mysql_error());
+//     $arr = array();
+//     while($row = mysql_fetch_array($rs)){
+// 	array_push($arr, $row['name']);
+//     }
+//     return $arr;
+// }
 
 function get_hosts_sql($customer) {
     global $hosts_table, $customers_table;
     $machines = array();
-    $query = "select h.* from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer'";
+    $query = "select h.* from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer' order by h.name";
     $rs = mysql_query($query) or error_log("get_hosts: $query || ".mysql_error());
     while($row = mysql_fetch_array($rs)){
 	$machines[$row['id']] = $row['name'];
@@ -58,7 +65,15 @@ function get_hosts_sql($customer) {
     return $machines;
 }
 
-function validate_sql($customer_name, $host_name) {
+function get_host_id_sql ($customer_name, $host_name) {
+    global $hosts_table, $customers_table;
+    $query = "select h.id from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
+    $rs = mysql_query($query) or error_log("validate: $query || ".mysql_error());
+    $row = mysql_fetch_array($rs);
+    return $row['id'];
+}
+
+function validate_customer_host_sql($customer_name, $host_name) {
     global $hosts_table, $customers_table;
     $query = "select count(*) as nr from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
     $rs = mysql_query($query) or error_log("validate: $query || ".mysql_error());
@@ -72,14 +87,6 @@ function customer_exists_sql($customer_name) {
     $rs = mysql_query($query) or error_log("customer_exists_sql: $query || ".mysql_error());
     $row = mysql_fetch_array($rs);
     return $row['nr']==1;
-}
-
-function get_host_id_sql ($customer_name, $host_name) {
-    global $hosts_table, $customers_table;
-    $query = "select h.id from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer_name' and h.name='$host_name'";
-    $rs = mysql_query($query) or error_log("validate: $query || ".mysql_error());
-    $row = mysql_fetch_array($rs);
-    return $row['id'];
 }
 
 function get_plugins_array_sql($host_id) {
@@ -127,8 +134,6 @@ function set_plugin_def ($plugin_id, $text, $sample_rate){
 	$value = preg_replace('/\s+/',' ', $value);
 	if (preg_match("/^\[.*\]$/i", $value)){
 	    $section = preg_replace("/^\[(.*)\]$/i", "$1", $value);
-// 	    $section = $value;
-// 	    error_log("section $value =".trim("  sa   asf sad      sadasd sad sad   "));
 	} else {
 	    $query = "select md5 from  $md5_names_table where name='$value'";
 	    $rs = mysql_query($query) or error_log("set_plugin_def1: $query || ".mysql_error());
@@ -141,7 +146,39 @@ function set_plugin_def ($plugin_id, $text, $sample_rate){
     mysql_query("UNLOCK TABLES;");
     
     $query = "update $plugins_table set update_rate=$sample_rate where id=$plugin_id";
-    mysql_query($query) or error_log("set_plugin_def3: $query || ".mysql_error());
+    $result = mysql_query($query) or return_error($query, mysql_error()); 
 }
 
+function add_customer_sql ($customer){
+    global $customers_table;
+    $query = "INSERT IGNORE INTO $customers_table (name) VALUES('$customer')";
+    $result = mysql_query($query) or return_error($query, mysql_error()); 
+}
+
+function delete_customer_sql ($customer){
+    global $customers_table;
+    $query = "delete from $customers_table where name='$customer'";
+    $result = mysql_query($query) or return_error($query, mysql_error()); 
+}
+
+function add_host_sql ($customer, $host){
+    global $hosts_table;
+    $cust_id = get_customer_id_sql($customer);
+    $query = "INSERT IGNORE INTO $hosts_table (customer_id, name) VALUES('$cust_id','$host')";
+    $result = mysql_query($query) or return_error($query, mysql_error()); 
+}
+
+function delete_host_sql ($customer, $host){
+    global $hosts_table, $customers_table;
+    $query = "delete from $hosts_table where name='$host' and customer_id=(select id from $customers_table where name='$customer')";
+    $result = mysql_query($query) or return_error($query, mysql_error()); 
+}
+
+function return_error($query, $mysql_error) {
+    header("HTTP/1.1 500 Internal Server Error");
+    $err = "Error in query $query.\n $mysql_error\n";
+    error_log($err);
+    print json_encode($err);
+    die;
+}
 ?> 

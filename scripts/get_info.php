@@ -17,7 +17,7 @@ function rebuild_plugin($customer, $hostname, $extra){
     $text = $extra->text;
     $plugin_id = $extra->id;
     $sample_rate = $extra->sample_rate;
-    print "";
+    print json_encode( "" );
 }
 
 function get_hosts($customer, $hostname, $extra){
@@ -36,7 +36,7 @@ function set_plugin_text($customer, $hostname, $extra){
     $plugin_id = $extra->id;
     $sample_rate = $extra->sample_rate;
     set_plugin_def($plugin_id, $text, $sample_rate);
-    print "";
+    print json_encode( "" );
 }
 
 function get_customers_autocomplete ($customer, $hostname, $extra){
@@ -44,8 +44,23 @@ function get_customers_autocomplete ($customer, $hostname, $extra){
     print json_encode( $arr );
 }
 
-function get_customer_exists($customer, $hostname, $extra){
+function check_customer($customer, $hostname, $extra){
     print json_encode( customer_exists_sql($customer) );
+}
+
+function add_customer($customer, $hostname, $extra){
+    $hosts = $extra->hosts;
+    add_customer_sql($customer);
+    foreach($hosts as $index => $host) {
+      add_host_sql($customer, $host->host);
+//       error_log( "$index => $host->host       $host->ip      $host->user      $host->pass\n");
+    }
+    print json_encode( "" );
+}
+
+function delete_customer($customer, $hostname, $extra){
+    delete_customer_sql($customer);
+    print json_encode( "" );
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
