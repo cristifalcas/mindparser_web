@@ -6,3 +6,4 @@ chown apache:nobody -R ./done/
 chmod g+w -R ./done/
 chown apache:nobody -R ./error/
 chmod g+w -R ./error/
+setfacl -Rm g:nobody:rwX,d:g:nobody:rwX /var/www/html/mindparser/scripts/uploads/

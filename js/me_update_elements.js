@@ -9,6 +9,7 @@ function sort_array(arr) {
 }
 
 function createPluginHTMLElements (plugin_id, plugin_name) {
+//   console.log("a",plugin_id, "q", plugin_name,"e");
     var form = '<div id="div_edit_plugin_'+plugin_id+'" title="Edit stats for '+plugin_name+'">\
 	    <textarea id="textarea_edit_plugin_'+plugin_id+'" class="css_textarea_edit_plugin"></textarea>\
 	    <p>\
@@ -52,6 +53,10 @@ function rebuild_plugin_success(response, textStatus, XMLHttpRequest) {
     write_error_div("rebuild_plugin_success");
 }
 
+function delete_plugin_success(response, textStatus, XMLHttpRequest) {
+    write_error_div("delete_plugin_success");
+}
+
 function submit_plugin(elem){
     var dialog_id = parseFloat(elem.attr('id').replace('div_edit_plugin_',""));
     var classList = $('#input_edit_plugin_'+dialog_id).attr('class').split(/\s+/);
@@ -89,10 +94,20 @@ function rebuild_plugin_click(elem){
   }
 }
 
+function delete_plugin() {
+  if (confirm('Are you sure?')){
+      var dialog_id = parseFloat(elem.attr('id').replace('div_edit_plugin_',""));
+      var arr = get_customer_host_name();
+      var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"delete_plugin", extra:{id:dialog_id}} };
+      post_data_home(JSONstring, delete_plugin_success);
+      elem.dialog( "close" );
+  }
+}
+
 function add_plugin_ids(plugins, plugins_arr){
-      var options = {
+  var options = {
 	autoOpen: false,
-	height: 500,
+	height: 530,
 	width: 550,
         modal: true,
         draggable: true,
@@ -124,6 +139,7 @@ function add_plugin_ids(plugins, plugins_arr){
 		  rebuild_plugin_click($(this));
 	    },
 	    'Delete plugin': function() {
+		  delete_plugin($(this));
 	    }
 	},
 	close: function() {
@@ -131,11 +147,10 @@ function add_plugin_ids(plugins, plugins_arr){
 	}
       };
 
-      $.each(plugins_arr, function(i, plugin_id) {
-	  if(typeof plugins[i] === 'undefined'){
-	      alert ("Err: "+i);
-      }
-
+  $.each(plugins_arr, function(i, plugin_id) {
+// 	  if(typeof plugins[i] === 'undefined'){
+// 	      alert ("Err: "+i);
+// 	  }
       var plugin_name = plugins[i].name;
       var result = createPluginHTMLElements(plugin_id, plugin_name);
       $('div#edit_plugins_forms_placer').append(result[0]);
@@ -153,7 +168,7 @@ function add_plugin_ids(plugins, plugins_arr){
       });
 
       return;
-    });
+  });
 }
 
 function clear_plugin_ids (ids_arr){
@@ -186,6 +201,7 @@ function updatePlugins(response, textStatus, XMLHttpRequest) {
     var existing_divs = $("*[id^='div_edit_plugin_']")
     var existing_plugin_ids = new Array;
     for (var i = 0; i < existing_divs.length; i++) {
+	console.log(existing_divs[i]);
 	existing_plugin_ids[i] = parseFloat(existing_divs[i].id.replace('div_edit_plugin_',""));
     }
     existing_plugin_ids = sort_array(existing_plugin_ids);
@@ -228,23 +244,23 @@ function updatePlugins(response, textStatus, XMLHttpRequest) {
 //     pluginsDiv.innerHTML = "testes diff2 ok: "+clientid;
 // }
 
-// function switch_select() {
-//     var hiddenEls  = $("div.selector").filter(":hidden");
-//     var visibleEls = $("div.selector").filter(":visible");
-//     $.each( hiddenEls, function(index, item){$(item).show();});
-//     $.each( visibleEls, function(index, item){$(item).hide();});
-//     if ($('div#local_config').attr('view_mode') == 'view'){
-// 	$('input.switch_selector').attr('src', "img/serp_molot.png");
-// 	$('input.switch_selector').attr('title', "Switch to view mode");
-// 	$('div#local_config').attr('view_mode', 'edit');
-//     } else if ($('div#local_config').attr('view_mode') == 'edit'){
-// 	$('input.switch_selector').attr('src', "img/graph_mode.jpg");
-// 	$('input.switch_selector').attr('title', "Switch to edit mode");
-// 	$('div#local_config').attr('view_mode', 'view');
-//     }
-//     
-//     return false;
-// }
+function switch_select() {
+    var hiddenEls  = $("div.selector").filter(":hidden");
+    var visibleEls = $("div.selector").filter(":visible");
+    $.each( hiddenEls, function(index, item){$(item).show();});
+    $.each( visibleEls, function(index, item){$(item).hide();});
+    if ($('div#local_config').attr('view_mode') == 'view'){
+	$('input.switch_selector').attr('src', "img/serp_molot.png");
+	$('input.switch_selector').attr('title', "Switch to view mode");
+	$('div#local_config').attr('view_mode', 'edit');
+    } else if ($('div#local_config').attr('view_mode') == 'edit'){
+	$('input.switch_selector').attr('src', "img/graph_mode.jpg");
+	$('input.switch_selector').attr('title', "Switch to edit mode");
+	$('div#local_config').attr('view_mode', 'view');
+    }
+    
+    return false;
+}
 
 function post_data_home( JSONstring, ctrl_funct) {
     $.ajax({
@@ -297,12 +313,13 @@ function update_blueimp_downloads() {
 
 function updates() {
     var arr = get_customer_host_name();
+//     console.log(arr);
     var JSONstring = { customer:arr[0], hostname:arr[1], data:{function:"get_plugins", extra:{}} };
     post_data_home(JSONstring, updatePlugins);
 }
 
 $(function() {
-//   $( "input.switch_selector" ).click(function () {switch_select();});
+  $( "input.switch_selector" ).click(function () {switch_select();});
   updates();
   var t1=setInterval('updates()', 1000);
   // wait 3 seconds for the main upload script to finish

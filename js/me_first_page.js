@@ -166,19 +166,19 @@ function clear_customer() {
 function add_host_to_dialog(host, ip, user, pass) {
   $( "#hosts tbody" ).append(
 '<tr class="new">\
-  <td><input class="ui-widget-content ui-corner-all" type="text" size="18" value="'+host+'"/></td>\
-  <td><input class="ui-widget-content ui-corner-all" type="text" size="15" value="'+ip+'"/></td>\
-  <td><input class="ui-widget-content ui-corner-all" type="text" size="18" value="'+user+'"/></td>\
-  <td><input class="ui-widget-content ui-corner-all" type="text" size="18" value="'+pass+'"/></td>\
+  <td><input class="ui-widget-content ui-corner-all" type="text" title="host name" value="'+host+'"/></td>\
+  <td><input class="ui-widget-content ui-corner-all" type="text" title="ip addr" value="'+ip+'"/></td>\
+  <td><input class="ui-widget-content ui-corner-all" type="text" title="user" value="'+user+'"/></td>\
+  <td><input class="ui-widget-content ui-corner-all" type="text" title="pass" value="'+pass+'"/></td>\
 </tr>'
   );
   $('<button />', {
-    'class': 'rem_host_btn ',
+    'class': 'rem_host_btn rem_host_btn_del',
     text: "Delete",
     title: "Delete",
     href: ''
   })
-  .button({icons: {secondary: "ui-icon-circle-close"}, text: false})
+  .button({icons: {primary: "ui-icon-circle-close"}, text: false})
   .appendTo($(".new"))
   .click(function(){ $(this).parent().remove(); });
   $(".new").removeClass("new");
@@ -216,7 +216,6 @@ function fill_customer(btn_element, data_id) {
   $("a[id_cust='"+data_id+"']").each(function (index) {
       var host=$(this).attr("host_name");
       add_host_to_dialog(host, '', '', '', "bla");
-//     console.log(index, data_id, host);
   });
   $("input[title='Enter customer name']").val(data_id).attr("disabled", true);
 }
@@ -228,12 +227,12 @@ function delete_customer_fnct() {
 
 function test() {
   $('<button />', {
-    'class': 'rem_host_btn ',
+    'class': 'rem_host_btn rem_host_btn_add',
     text: "Add",
     title: "Add",
     href: ''
   })
-  .button({icons: {secondary: "ui-icon-circle-check"}, text: false})
+  .button({icons: {primary: "ui-icon-circle-check"}, text: false})
   .appendTo($("#add_new_host"))
   .click(function(){ append_new_row_hosts($(this)); });
 
@@ -260,7 +259,7 @@ function test() {
   $( "#edit_customer" ).dialog({
     autoOpen: false,
     height: 400,
-    width: 645,
+    width: 640,
     modal: true,
     open: function(event, ui){},
     buttons: {

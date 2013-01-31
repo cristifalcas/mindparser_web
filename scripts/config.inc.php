@@ -98,34 +98,28 @@ function edit_customer_div(){
   return $html;
 }*/
 
-// function generateMenuInTable() {
-//     $html = '<table  class="tableMain">
-//   <tr>
-//     <td width=185 class="my_selector">
-//       <input type="image" src="img/graph_mode.jpg" name="image" class="switch_selector" title="Switch to edit mode">
-//       <div class="selector">
-// 	'. generateMenu().'
-//       </div>
-//       <div class="selector" style="display: none;">
-// 	  <a class="edit_menu noselect">Edit Customers</a>
-//       </div>
-//     </td>
-//     <td >
-// 	<div id="edit_plugins_forms_placer" style="display:none;">'.edit_customer_div().'</div>
-// 	<div class="selector" style="width:100%; height:60px;overflow:auto;valign:top;display:none;" title="Edit plugin">
-// 	    <ul id="change_edit_plugins" class="links_plugins"></ul>
-// 	</div>
-// 	<div class="selector" style="width:100%; height:60px;overflow:auto;valign:top;" title="View plugin">
-// 	    <ul id="change_view_plugins" class="links_plugins"></ul>
-// 	</div>
-//     </td>
-//   </tr>
-// </table><br/>
-// <div id="errors">Errors</div>
-// ';
-//     return $html;
-// }
-// 
+function generateMenuInTable() {
+    $html = '<table  class="tableMain">
+  <tr>
+    <td width=185 class="my_selector">
+      <input type="image" src="img/graph_mode.jpg" name="image" class="switch_selector" title="Switch to edit mode">
+    </td>
+    <td >
+	<div id="edit_plugins_forms_placer" style="display:none;"></div> 
+	<div class="selector" style="width:100%; height:60px;overflow:auto;valign:top;" title="Edit plugin">
+	    <ul id="change_edit_plugins" class="links_plugins"></ul>
+	</div>
+	<div class="selector" style="width:100%; height:60px;overflow:auto;valign:top;display:none;" title="View plugin">
+	    <ul id="change_view_plugins" class="links_plugins"></ul>
+	</div>
+    </td>
+  </tr>
+</table><br/>
+<div id="errors">Errors</div>
+';
+    return $html;
+}
+
 // function generateMenu() {
 //     $html = '<form name="form_menu" method="get" action="index.php"> 
 // <input type="hidden" name="menu_selection" value="" />
@@ -178,10 +172,10 @@ function generateAddCustomer() {
 	</thead>
 	<tbody>
 	    <tr id="add_new_host">
-		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" size="18" title="host name"/></td>
-		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" size="15" title="ip addr"/></td>
-		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" size="18" title="user"/></td>
-		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" size="18" title="pass"/></td>
+		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" title="host name"/></td>
+		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" title="ip addr"/></td>
+		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" title="user"/></td>
+		<td><input type="text" class="defaultText ui-widget-content ui-corner-all" title="pass"/></td>
 	    </tr>
 	</tbody>
     </table>
@@ -204,15 +198,6 @@ function generate_customers() {
 	$html .= "</div>\n";
     }
     return $html."</div>\n";
-    
-// return edit_customer_div();
-// print_r($customers);
-// <div id="accordion">
-// <h3>First header</h3>
-// <div>First content panel</div>
-// <h3>Second header</h3>
-// <div>Second content panel</div>
-// </div>
 }
 
 function get_small_head () {

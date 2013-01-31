@@ -8,10 +8,13 @@ body {
 font-size: 0.8em
 }
 
-/*#rem_host_btn > * {
-    background-color: green;
-    border: 1px solid #132b14;
-    color:#132b14;
+/*.rem_host_btn_del * {
+  text-indent: -999px;
+  background-color: #FF9999;
+}
+.rem_host_btn_add * {
+  text-indent: -999px;
+  background-color: #D1F6D1;
 }*/
 
 #accordion {
@@ -25,6 +28,21 @@ font-size: 0.8em
 
 
 .ui-accordion-content {
-  background: rgb(220, 248, 220);
+  background: #E6FFFF;
   font-size: 0.8em;
 }
+
+[title="host name"], [title="user"], [title="pass"]{
+  width:150px;
+} 
+[title="ip addr"]{
+  width:130px;
+} 
+
+/* custom theme update */
+/*.ui-widget-overlay {
+background: #aaaaaa url(images/ui-bg_flat_0_aaaaaa_40x100.png) 50% 50% repeat-x;
+opacity: .6;
+filter: Alpha(Opacity=60);
+}*/
+

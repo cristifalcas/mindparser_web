@@ -47,7 +47,7 @@ class UploadHandler
             'upload_url' => $this->get_full_url()."/$dir/",
 
             'user_dirs' => false,
-            'mkdir_mode' => 0755,
+            'mkdir_mode' => 0777,
             'param_name' => 'files',
             // Set the following option to 'POST', if your server does not support
             // DELETE requests. This is a parameter sent to the client:

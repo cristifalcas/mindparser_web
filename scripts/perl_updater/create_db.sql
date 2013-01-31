@@ -3,6 +3,8 @@ SET GLOBAL innodb_file_per_table=1;
 create database mind_statistics;
 grant index, create, select, insert, update, delete, drop, alter, lock tables on  mind_statistics.* to 'mind_statistics'@'%' identified by '!0mind_statistics@9';
 grant index, create, select, insert, update, delete, drop, alter, lock tables on  mind_statistics.* to 'mind_statistics'@'localhost' identified by '!0mind_statistics@9';
+grant index, create, select, insert, update, delete, drop, alter, lock tables on  mind_statistics.* to 'mind_statistics'@'wikitiki.mindsoft.com' identified by '!0mind_statistics@9';
+grant index, create, select, insert, update, delete, drop, alter, lock tables on  mind_statistics.* to 'mind_statistics'@'localhost' identified by '!0mind_statistics@9';
 use mind_statistics;
 
 CREATE TABLE IF NOT EXISTS __customers (
@@ -98,4 +100,3 @@ SET GLOBAL innodb_file_per_table=0;
 
 -- CREATE TABLE IF NOT EXISTS rtsstatistics LIKE statistics_template; 
 -- ALTER TABLE rtsstatistics add FOREIGN KEY (host_id) REFERENCES hosts(id);
-
