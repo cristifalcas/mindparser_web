@@ -12,7 +12,7 @@ use Definitions ':all';
 use Log::Log4perl qw(:easy);
 
 my $plugin_info;
-my $max_rows = 50000;
+my $max_rows = 5000;
 my ($t0, $t1, $t2);
 my ($dbh, $data, $fucker_line, $fucker_header);
 
