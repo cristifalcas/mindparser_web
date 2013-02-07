@@ -106,6 +106,7 @@ sub updateFileColumns {
 
 sub insertRowsTable {
     my ($self, $table_name, $cols, @vals) = @_;
+    return if ! @vals || ! scalar @vals;
     ## @vals is an array of array refs
     LOGDIE "We can't insert those: ".Dumper($table_name, $cols, @vals) if scalar @$cols != scalar @{ $vals[0] };
     $_ = join ",", @$_ foreach @vals;

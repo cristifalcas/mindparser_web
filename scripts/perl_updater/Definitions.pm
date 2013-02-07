@@ -34,6 +34,7 @@ use constant {
 our $stats_default_info = {
 	rts => { group_by	=> ["GwIP"],
 		 multi_value	=> [";"],
+		 delim		=> ",",
 		},
 	dialogicopensessions => { group_by	=> ["SIU ID"]
 		},

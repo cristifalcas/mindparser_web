@@ -12,8 +12,8 @@ use Definitions ':all';
 use Log::Log4perl qw(:easy);
 
 my $plugin_info;
-my $max_rows = 5000;
-my ($t0, $t1);
+my $max_rows = 50000;
+my ($t0, $t1, $t2);
 my ($dbh, $data, $fucker_line, $fucker_header);
 
 sub new {
@@ -28,9 +28,8 @@ sub new {
 
 sub getArray {
     my ($line, $delim) = @_;
-    $delim = "," if ! defined $delim;
-    chomp $line;
-    my @arr = map {s/(\r)|(^\s*)|(\s*$)//g; $_ } split /$delim/, $line;
+    $line =~ s/\R//g;
+    my @arr = split /$delim/, $line;
     return @arr;
 }
 
@@ -150,12 +149,22 @@ sub insertRows {
 
     $dbh->insertRowsTable($table_name, $columns, @values);
     undef $hash_vals;
-    INFO "Insert ".(scalar @values)." rows took ".tv_interval($t1)."\n";$t1=[gettimeofday];
+#     INFO "Insert ".(scalar @values)." rows took ".tv_interval($t1)."\n";$t1=[gettimeofday];
 }
 
 sub isHeader {
-    my ($self, $str) = @_;
+    my ($str) = @_;
     return $str =~ m/^Date\s*,\s*Time\s*,/i;
+}
+
+sub updateError {
+    my ($line_nr, $str) = @_;
+    ERROR "Got error: $str.\n";
+    my $err = $fucker_header;
+    chomp $fucker_line;
+    $fucker_header = "";
+    $err .= "$fucker_line\t => at line nr $line_nr we got: $str\n";
+    return $err;
 }
 
 sub parse {
@@ -168,18 +177,22 @@ sub parse {
     $dbh->createStatsTable($table_name);
 
     my ($header, $groupby_index, $is_new_header, $hash_vals, $header_nr_elem, $value_nr_elem);
+    my $delim = $stats_default_info->{$plugin_info->{plugin_name}}->{delim};
+    $delim = "," if ! defined $delim;
+    my $errors = "";
     my $count = 0; my $nr_lines = 0;
 
-$t0 = [gettimeofday];$t1=[gettimeofday];
+$t0 = [gettimeofday];$t1=[gettimeofday];$t2=[gettimeofday];
     open (MYFILE, $filename) or LOGDIE  "Couldn't open $filename: $!";
     while (<MYFILE>) {
+if ($nr_lines % $max_rows == 0){INFO "between $max_rows lines took : ".tv_interval($t2)."\n";$t2=[gettimeofday];};
 	my $line = $_;
 	$nr_lines++;
 $fucker_line = $line;
 	next if $line =~ m/^\s*$/;
-	my @line_arr = getArray($line);
+	my @line_arr = getArray($line, $delim);
 	$count++;
-	if ($self->isHeader($line)){
+	if (isHeader($line)){
 $fucker_header = $line;
 	    $header_nr_elem = scalar @line_arr;
 	    insertRows($header, $hash_vals, $table_name) if defined $header;
@@ -187,24 +200,27 @@ $fucker_header = $line;
 	    $is_new_header = 1;
 	} else {
 	    if (! defined $header) {
-		LOGDIE "Wrong line: \n\t$line\n".Dumper($header);
-		return EXIT_WRONG_TYPE ;
+		$errors .= updateError($nr_lines, "No header set.");
+		next;
 	    }
-	    $value_nr_elem = scalar @line_arr;
-	    LOGDIE "Not good at line nr. $nr_lines.\n".Dumper($fucker_header, $fucker_line) if $header_nr_elem != $value_nr_elem;
+	    if ($header_nr_elem != scalar @line_arr) {
+		$errors .= updateError($nr_lines, "header and values don't match.");
+		next;
+	    }
 	    my ($timestamp, $values, $multi_values) = extractValues(@line_arr);
 	    $header = fixHeader($header, $multi_values, $groupby_index) if $is_new_header;
-	    ($values, my $group_by) = fixValues($values, $multi_values, $groupby_index);
-	    LOGDIE "Strange line (header<>values):".Dumper($header, $values) if scalar @$header != scalar @$values;
-	    $hash_vals->{$group_by}->{$timestamp} = $values;
 	    $is_new_header = 0;
+	    ($values, my $group_by) = fixValues($values, $multi_values, $groupby_index);
+	    LOGDIE "Strange line (header<>values) after fix:".Dumper($header, $values) if scalar @$header != scalar @$values;
+	    $hash_vals->{$group_by}->{$timestamp} = $values;
 	    insertRows($header, $hash_vals, $table_name) if ($count % $max_rows == 0);
 	}
     }
     close (MYFILE);
     insertRows($header, $hash_vals, $table_name);
-    $dbh->updateFileColumns($data->{id}, ['parse_duration','parse_done_time'], [$dbh->getQuotedString($t1), 'NOW()']);
+    $dbh->updateFileColumns($data->{id}, ['parse_duration','parse_done_time'], [$dbh->getQuotedString($t0), 'NOW()']);
     INFO "Done stats for file $filename in ".tv_interval($t0)." ms.\n";
+LOGDIE Dumper($errors);
     return START_MUNIN;
 }
 
