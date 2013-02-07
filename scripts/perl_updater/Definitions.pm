@@ -33,23 +33,15 @@ use constant {
 
 our $stats_default_info = {
 	rts => { group_by	=> ["GwIP"],
-		 update_rate	=> 300,
+		 multi_value	=> [";"],
 		},
-	asc => { group_by	=> [],
-		 update_rate	=> 300,
-		},
-	dialogicopensessions => { group_by	=> ["SIU ID"],
-				  update_rate	=> 3600,
-		},
-	alon3600_ivr => { group_by	=> ["dialed digits"],
-				  update_rate	=> 3600,
-		},
-	alon300_ivr => { group_by	=> ["dialed digits"],
-				  update_rate	=> 300,
+	dialogicopensessions => { group_by	=> ["SIU ID"]
 		},
 };
 
-our @EXPORT_OK = qw(EXIT_STATUS_NA IGNORE START_EXTRACT START_PARSERS START_MUNIN SUCCESS_LAST ERRORS_START EXIT_NO_FILE EXIT_WRONG_TYPE EXIT_WRONG_NAME EXIT_EMPTY EXIT_ERROR_EXTRACT EXIT_WRONG_MIME EXIT_HOST_DELETE EXIT_EXTR_ERR EXIT_NO_LINES EXIT_NO_ROWS EXIT_NO_RRD EXIT_FILE_BAD EXIT_MUNIN_ERROR ERRORS_LAST $stats_default_info);
+our $columns_header = ['file_id', 'host_id', 'timestamp', 'group_by'];
+
+our @EXPORT_OK = qw(EXIT_STATUS_NA IGNORE START_EXTRACT START_PARSERS START_MUNIN SUCCESS_LAST ERRORS_START EXIT_NO_FILE EXIT_WRONG_TYPE EXIT_WRONG_NAME EXIT_EMPTY EXIT_ERROR_EXTRACT EXIT_WRONG_MIME EXIT_HOST_DELETE EXIT_EXTR_ERR EXIT_NO_LINES EXIT_NO_ROWS EXIT_NO_RRD EXIT_FILE_BAD EXIT_MUNIN_ERROR ERRORS_LAST $stats_default_info $columns_header);
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
 1;

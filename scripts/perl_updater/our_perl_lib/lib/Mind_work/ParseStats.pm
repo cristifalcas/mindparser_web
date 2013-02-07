@@ -15,12 +15,6 @@ use File::Copy;
 use Definitions ':all';
 my $config = MindCommons::xmlfile_to_hash("config.xml");
 
-# http://www.youtube.com/playlist?list=PLC9BE20B7AE9C9CF3 romanesti comedie
-# http://www.youtube.com/playlist?list=PLFACB917F48DBF4C1 comedie
-# http://www.youtube.com/playlist?list=PL51081A8426405549 jazz
-# http://www.youtube.com/playlist?list=PL1C44B8DCEB524ACF desene 
-# http://www.youtube.com/playlist?list=PL54F388AF2FE32D75 carl segan
-
 sub moveFile {
     my ($ret, $data) = @_;
     my $filename = $data->{file_name};
@@ -28,7 +22,7 @@ sub moveFile {
     my $cust_name = $data->{customer_name};
     my $host_name = $data->{host_name};
     my $dir_prefix;
-    DEBUG "Returned success $ret for $filename.\n";
+    DEBUG "Returned code=$ret for $filename.\n";
     $dir_prefix = "$config->{dir_paths}->{filedone_dir}/$cust_name/$host_name/";
     make_path($dir_prefix);
     my ($name,$dir,$suffix) = fileparse($filename, qr/\.[^.]*/);
@@ -43,16 +37,16 @@ sub run {
     my $ret;
     if (-f $data->{file_name}) {
 	my $parser;
-	if ($data->{plugin_info}->{plugin_name} =~ m/^(rts|asc|dialogicopensessions|alon300_ivr|alon3600_ivr)$/) {
+	if ($data->{plugin_info}->{plugin_name} =~ m/^(rts|asc|dialogicopensessions)$/) {
 	    use Parsers::MindGenericStatistics;
-	    $parser = new MindGenericStatistics();
+	    $parser = new MindGenericStatistics($dbh, $data);
 	} elsif ($data->{plugin_info}->{plugin_name} eq "asccoco") {
 	    use Parsers::MindGenericStatistics;
-	    $parser = new MindGenericStatistics();
+	    $parser = new MindGenericStatistics($dbh, $data);
 	} else {
 	    LOGDIE "We don't know how to parse files of type $data->{plugin_info}->{plugin_name} yet.\n";
 	}
-	$ret = $parser->parse($data, $dbh);
+	$ret = $parser->parse($data);
 	moveFile($ret, $data);
     } else {
 	$ret = EXIT_NO_FILE;

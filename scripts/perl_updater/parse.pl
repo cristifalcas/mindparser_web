@@ -40,9 +40,9 @@ my $uploads_dir = $config->{dir_paths}->{uploads_dir};
 make_path($uploads_dir, $config->{dir_paths}->{filedone_dir}, $config->{dir_paths}->{fileerr_dir});
 
 my $inotify = Linux::Inotify2->new;
-my $threads_stats = 10;
-my $threads_extract = 10;
-my $threads_munin = 4;
+my $threads_stats = 1;
+my $threads_extract = 1;
+my $threads_munin = 0;
 my $threads_log = 0;
 my $watched_folders;
 
@@ -181,7 +181,7 @@ sub statistics_getwork {
 
 sub logparser_getwork {
     my $dbh = shift;
-    return $dbh->getWorkForLogparser(START_PARSERS);
+    return $dbh->getWorkForLogParsers(START_PARSERS);
 }
 
 sub munin_getwork {
@@ -266,8 +266,10 @@ sub main_process_worker {
     use Mind_work::SqlWork;
 
     my $dbh = new SqlWork();
-    assign_watchers($uploads_dir);
+    $dbh->clean_existing_files();
+    $dbh->nulifyPluginsQueue();
     addFilesDB ($_, $dbh) foreach (MindCommons::find_files_recursively($uploads_dir));
+    assign_watchers($uploads_dir);
 
     while (1) {
 	my @events = $inotify->read;

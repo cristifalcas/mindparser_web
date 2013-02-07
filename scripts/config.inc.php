@@ -14,7 +14,7 @@ function disconnect() {
 
 // function make_dirs() {
 //     foreach (get_customers_sql() as $cust) {
-// 	foreach (get_hosts_sql($cust) as $host) {
+// 	foreach (get_customer_hosts_sql($cust) as $host) {
 // 	    ## upload script is in another directory
 // 	    $dir_full_path = dirname($_SERVER['SCRIPT_FILENAME'])."/scripts/uploads/$cust/$host/";
 // 	    if (! is_dir ($dir_full_path)) {
@@ -129,7 +129,7 @@ function generateMenuInTable() {
 //     $all_customers = get_customers_sql();
 // //     sort($all_customers);
 //     foreach ($all_customers as $cust) {
-// 	$all_hosts = get_hosts_sql($cust);
+// 	$all_hosts = get_customer_hosts_sql($cust);
 // 
 // // 	if( !sizeof($all_hosts)){ continue;};
 // 	$html .= "
@@ -189,7 +189,7 @@ function generate_customers() {
     $customers = get_customers_sql();
     $html = '<div id="accordion">';
     foreach ($customers as $customer) {
-	$hosts = get_hosts_sql($customer);
+	$hosts = get_customer_hosts_sql($customer);
 	$html .= "<h3>$customer</h3>\n<div>\n";
 	$html .= "<button class=\"add_customer_btn\" data-id=\"$customer\">Edit customer</button><br/>\n";
 	foreach ($hosts as $host) {

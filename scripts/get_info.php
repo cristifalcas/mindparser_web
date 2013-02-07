@@ -28,7 +28,7 @@ error_log("to be done delete plugn\n");
 }
 
 function get_hosts($customer, $hostname, $extra){
-    $arr=get_hosts_sql($customer);
+    $arr = get_customer_hosts_sql($customer);
     print json_encode( $arr );
 }
 
@@ -81,8 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
 	error_log("function name '$function' doesn't exist.");
     }
-
-//     error_log ($_POST['json']);
 } else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     error_log ("get = ".implode("|",$_GET));
 }

@@ -47,7 +47,7 @@ sub initVars {
 
     $input->{cust_name} =  $dbh->get_customer_name_from_host_id($input->{host_id});
     $input->{host_name} =  $dbh->get_host_name($input->{host_id});
-    $input->{rate} = $stats_default_info->{$input->{plugin_name}}->{update_rate};
+    $input->{rate} = $dbh->get_plugin_update_rate($input->{plugin_id});
 
     $work_dir = "$config_xml->{dir_paths}->{filetmp_dir}/munin/$input->{cust_name}_$input->{host_name}_$input->{plugin_name}/";
     $input->{conf_file} = "$work_dir/$input->{cust_name}_$input->{host_name}.conf";
@@ -110,61 +110,61 @@ sub lastTimeFromRRDFiles {
     return $last_timestamp;
 }
 
-sub configPluginsDefault {
-    my ($colums_name, $name) = @_;
-    my $plugin_conf_template = "$plugins_conf_dir/$name.conf";
-    if (! -f $plugin_conf_template || ! -s $plugin_conf_template){
-	open(FILE, ">$plugin_conf_template") or LOGDIE "Can't open file $plugin_conf_template for writing: $!\n";
-	print FILE $colums_name->{$_}->{name}."\n" foreach (keys %$colums_name);
-	close(FILE);
-	LOGDIE "Config first the plugin in $plugin_conf_template.\n";
-    }
+# sub configPluginsDefault {
+#     my ($colums_name, $name) = @_;
+#     my $plugin_conf_template = "$plugins_conf_dir/$name.conf";
+#     if (! -f $plugin_conf_template || ! -s $plugin_conf_template){
+# 	open(FILE, ">$plugin_conf_template") or LOGDIE "Can't open file $plugin_conf_template for writing: $!\n";
+# 	print FILE $colums_name->{$_}->{name}."\n" foreach (keys %$colums_name);
+# 	close(FILE);
+# 	LOGDIE "Config first the plugin in $plugin_conf_template.\n";
+#     }
+# 
+#     open(FILE, $plugin_conf_template) or LOGDIE "Can't open file for reading: $!\n";
+#     my ($section, $config);
+#     foreach my $line (<FILE>) {
+# 	$line =~ s/(\n*|\r*)//g;
+# 	if ($line =~ m/^\s*\[(.*?)\]\s*$/){
+# 	    my $name = $1;
+# 	    my @extra_args = split /:/, $name;
+# 	    $section = shift @extra_args;
+# 	    $config->{$section}->{__munin_extra_info} = \@extra_args;
+# 	    DEBUG "Got new section $section.\n";
+# 	} else {
+# 	    LOGDIE "Config first the plugin in $plugin_conf_template.\n" if ! defined $section;
+# 	    foreach my $md5 (keys %$colums_name) {
+# 		my $name = $colums_name->{$md5}->{name};
+# 		if ($name =~ m/^$line$/i) {
+# 		    $config->{$section}->{$md5} = [];
+# 		    last;
+# 		}
+# 	    }
+# 	}
+#     }
+#     close(FILE);
+#     return $config;
+# }
 
-    open(FILE, $plugin_conf_template) or LOGDIE "Can't open file for reading: $!\n";
-    my ($section, $config);
-    foreach my $line (<FILE>) {
-	$line =~ s/(\n*|\r*)//g;
-	if ($line =~ m/^\s*\[(.*?)\]\s*$/){
-	    my $name = $1;
-	    my @extra_args = split /:/, $name;
-	    $section = shift @extra_args;
-	    $config->{$section}->{__munin_extra_info} = \@extra_args;
-	    DEBUG "Got new section $section.\n";
-	} else {
-	    LOGDIE "Config first the plugin in $plugin_conf_template.\n" if ! defined $section;
-	    foreach my $md5 (keys %$colums_name) {
-		my $name = $colums_name->{$md5}->{name};
-		if ($name =~ m/^$line$/i) {
-		    $config->{$section}->{$md5} = [];
-		    last;
-		}
-	    }
-	}
-    }
-    close(FILE);
-    return $config;
-}
-
-sub configPlugins {
-    my ($input, $dbh) = @_;
-    my $colums_name = $dbh->getColumns($input->{inserted_in_tablename});
-    $input->{nr_rows_from_db} = sprintf("%.0f", 20000/(scalar (keys %$colums_name)))+2;
-    DEBUG "Retrieving rows in batches of $input->{nr_rows_from_db}\n";
-
-    my $config_fs = configPluginsDefault($colums_name, $input->{plugin_name});
-    my $config_db = $dbh->getPluginConf($input->{id});
-# LOGDIE Dumper($config_fs,$config_db);
-    my $config;
-    my $already_defined_columns = $dbh->getPluginColumns($input->{id});
-    foreach my $key (keys %$colums_name){
-	if (! defined $already_defined_columns->{$key} && $key ne "__munin_extra_info") {
-	    $config->{'Not configured'}->{$key} = [];
-	    $config->{'Not configured'}->{__munin_extra_info} = [];
-	}
-    }
-    $dbh->addPluginConf($input->{id}, $config);
-    return $config_fs;
-}
+# sub configPlugins {
+#     my ($input, $dbh) = @_;
+#     my $colums_name = $dbh->getColumns($input->{inserted_in_tablename});
+#     $input->{nr_rows_from_db} = sprintf("%.0f", 20000/(scalar (keys %$colums_name)))+2;
+#     DEBUG "Retrieving rows in batches of $input->{nr_rows_from_db}\n";
+# 
+#     my $config_fs = configPluginsDefault($colums_name, $input->{plugin_name});
+#     my $config_db = $dbh->getPluginConf($input->{id});
+# # LOGDIE Dumper($config_fs,$config_db);
+#     my $config;
+#     my $already_defined_columns = $dbh->getPluginColumns($input->{id});
+#     foreach my $key (keys %$colums_name){
+# 	if (! defined $already_defined_columns->{$key} && $key ne "__munin_extra_info") {
+# 	    $config->{'Not configured'}->{$key} = [];
+# 	    $config->{'Not configured'}->{__munin_extra_info} = [];
+# 	}
+#     }
+#     $dbh->addPluginConf($input->{id}, $config);
+#     return $config_fs;
+# }
 
 sub getHeaderMunin {
     my $input = shift;
@@ -211,29 +211,29 @@ sub write_to_spool {
 
 sub make_munin_info {
     my ($row, $dbh, $input, $config, $md5_to_section, $group) = @_;
-# print Dumper($row, $dbh, $input, $config, $md5_to_section, $group);
-    my @header = getHeaderMunin($input);
-    my $colums_name = $dbh->getColumns($input->{inserted_in_tablename});
-    my $q;
-    foreach my $md5 (keys %$row) {
-	next if $md5 =~ m/^(host_id|file_id|timestamp|group_by)$/i;
-	next if ! defined $row->{$md5};
-	my $name = $colums_name->{$md5}->{name};#."_$group";
-	my $val = $row->{$md5};
-	my $section = $md5_to_section->{$md5};
-	## push once only graph_title, header and args for title
-	if (! defined $q->{$section} ) {
-	    push @{ $q->{$section} }, @{ $config->{$section}->{__munin_extra_info} } if defined $config->{$section}->{__munin_extra_info};
-	    push @{ $q->{$section} }, (@header, "graph_title $section $group");
-	}
-	push @{ $q->{$section} }, (
-	    "$md5.label $name",
-	    "$md5.info $name",
-	    "$md5.value $val",
-	);
-# 		push @{ $all_md5_per_section->{$section} }, ($md5);
-    }
-    return $q;
+# # print Dumper($row, $dbh, $input, $config, $md5_to_section, $group);
+#     my @header = getHeaderMunin($input);
+#     my $colums_name = $dbh->getColumns($input->{inserted_in_tablename});
+#     my $q;
+#     foreach my $md5 (keys %$row) {
+# 	next if $md5 =~ m/^(host_id|file_id|timestamp|group_by)$/i;
+# 	next if ! defined $row->{$md5};
+# 	my $name = $colums_name->{$md5}->{name};#."_$group";
+# 	my $val = $row->{$md5};
+# 	my $section = $md5_to_section->{$md5};
+# 	## push once only graph_title, header and args for title
+# 	if (! defined $q->{$section} ) {
+# 	    push @{ $q->{$section} }, @{ $config->{$section}->{__munin_extra_info} } if defined $config->{$section}->{__munin_extra_info};
+# 	    push @{ $q->{$section} }, (@header, "graph_title $section $group");
+# 	}
+# 	push @{ $q->{$section} }, (
+# 	    "$md5.label $name",
+# 	    "$md5.info $name",
+# 	    "$md5.value $val",
+# 	);
+# # 		push @{ $all_md5_per_section->{$section} }, ($md5);
+#     }
+#     return $q;
 }
 
 sub addRowsToRRD {
@@ -290,8 +290,8 @@ sub run {
     DEBUG "Start munin work for $data->{id}.\n";
     initVars($data, $dbh);
     $data->{from_time} =  lastTimeFromRRDFiles($data);
-    my $config = configPlugins($data, $dbh);
-
+#     my $config = configPlugins($data, $dbh);
+my $config;
     writeMuninConfFiles($data);
     my $db_h = $dbh->getDBI_handler();
     my $all_groups = $db_h->selectall_arrayref("SELECT DISTINCT group_by FROM $data->{inserted_in_tablename} WHERE host_id=$data->{host_id}");

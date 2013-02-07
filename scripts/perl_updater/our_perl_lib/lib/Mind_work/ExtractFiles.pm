@@ -1,5 +1,10 @@
 package ExtractFiles;
 
+# get files from db
+# check type and extract if archive in tmp
+# move files back so they can be find again by the watchers
+# if file is text, we set it as parsers and update in db
+
 use warnings;
 use strict; 
 $| = 1;
@@ -96,16 +101,14 @@ sub run {
     my $ret = extract_file($filename, $flm);
     if ($ret == START_PARSERS) {
 	my ($name, $dir, $suffix) = fileparse($data->{file_name}, qr/\.[^.]*/);
-	if ($name =~ m/^((.*?)(statistics?|info))/i) {
+	if ($name =~ m/^(([a-z][a-z0-9_]*?)(statistics?|info))/i) {
 	    my $table_name = lc($1)."_$data->{host_id}";
 	    my $app = $2;
 	    my $type = lc($3);
-	    LOGDIE "Wrong table name: $table_name" if $table_name !~ m/^[a-z0-9_]+$/i;
 	    my $plugin_name = lc($app);
-	    ## fix asc name
-	    $type = "statistics" if $type eq "statistic";
+	    $type = "statistics" if $type eq "statistic"; ## fix for asc
 	    my $columns = ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name', 'update_rate'];
-	    my $values = [$data->{customer_id}, $data->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name), $stats_default_info->{$plugin_name}->{update_rate}];
+	    my $values = [$data->{customer_id}, $data->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name), -1];
 	    my $plugin_id = $dbh->getIDUsed ($config->{db_config}->{plugins_table}, $columns, $values);
 	    if (! defined $plugin_id) {
 		## add new plugin row
@@ -113,6 +116,7 @@ sub run {
 		## retrieve the pluginid
 		$plugin_id = $dbh->getIDUsed ($config->{db_config}->{plugins_table}, $columns, $values);
 	    }
+	    $plugin_id = -1 if ! defined $plugin_id || $plugin_id !~ m/^[0-9]+$/;;
 	    $dbh->setNeedsUpdate ($plugin_id, 1);
 	    ## set the new pluginid to the file
 	    $dbh->updateFileColumns ($data->{id}, ['plugin_id'], [$plugin_id]);

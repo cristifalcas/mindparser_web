@@ -54,7 +54,7 @@ function get_customer_id_sql ($customer_name) {
 //     return $arr;
 // }
 
-function get_hosts_sql($customer) {
+function get_customer_hosts_sql($customer) {
     global $hosts_table, $customers_table;
     $machines = array();
     $query = "select h.* from $hosts_table h, $customers_table c where h.customer_id=c.id and c.name='$customer' order by h.name";

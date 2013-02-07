@@ -35,6 +35,13 @@ sub getDBI_handler {
     return $db_h;
 }
 
+sub clean_existing_files {
+    my ($self, $plugin_id) = @_;
+    $db_h->do("update $config->{db_config}->{collected_file_table} 
+		      set status=".EXIT_STATUS_NA)
+	  || LOGDIE "Error $DBI::errstr\n";
+}
+
 sub insertFile {
     my ($self, $file_hash, $status) = @_;
     DEBUG "Add to db file $file_hash->{file_info}->{name} with status $status.\n";
@@ -73,11 +80,9 @@ sub decreasePluginQueue {
 	  || LOGDIE "Error $DBI::errstr\n";
 }
 
-sub nulifyPluginQueue {
-    my ($self, $plugin_id) = @_;
-    $db_h->do("update $config->{db_config}->{plugins_table} 
-		      set files_queue=NULL WHERE id=$plugin_id")
-	  || LOGDIE "Error $DBI::errstr\n";
+sub nulifyPluginsQueue {
+    my ($self) = @_;
+    $db_h->do("update $config->{db_config}->{plugins_table} set files_queue=0") || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub getPluginQueue {
@@ -117,22 +122,6 @@ sub createStatsTable {
 	group_by varchar(20),
 	UNIQUE (host_id, timestamp, group_by),
 	FOREIGN KEY (host_id) REFERENCES $config->{db_config}->{host_table}(id))") || LOGDIE "Error $DBI::errstr\n";
- 
-#     my $query = $db_h->do("CREATE TABLE IF NOT EXISTS $table_name LIKE $config->{db_config}->{stats_template_table}") || LOGDIE "Error $DBI::errstr\n";
-#     if (! defined $query) {
-# 	$db_h->do("ALTER TABLE $table_name add FOREIGN KEY (host_id) REFERENCES hosts(id)") || LOGDIE "Error $DBI::errstr\n";
-# 	$db_h->do("ALTER TABLE $table_name add 
-# , ADD UNIQUE INDEX 'host_id_UNIQUE' ('host_id' ASC) 
-# , ADD UNIQUE INDEX 'timestamp_UNIQUE' ('timestamp' ASC) 
-# , ADD UNIQUE INDEX 'group_by_UNIQUE' ('group_by' ASC) ") || LOGDIE "Error $DBI::errstr\n";
-# 
-# CREATE TABLE IF NOT EXISTS rtsstatistics_2 LIKE __statistics_template
-# ALTER TABLE rtsstatistics_2 add FOREIGN KEY (host_id) REFERENCES hosts(id)
-# ALTER TABLE rtsstatistics_2 add 
-# , ADD UNIQUE INDEX 'host_id_UNIQUE' ('host_id' ASC) 
-# , ADD UNIQUE INDEX 'timestamp_UNIQUE' ('timestamp' ASC) 
-# , ADD UNIQUE INDEX 'group_by_UNIQUE' ('group_by' ASC)
-#    }
 }
 
 sub cloneForFork {
@@ -164,17 +153,42 @@ sub getQuotedString {
     return $db_h->quote($string);
 }
 
-sub addPluginConf {
-    my ($self, $id, $info) = @_;
-    my (@values, $sections);
-    foreach my $section (keys %$info) {
-	my $sec_hash = $info->{$section};
-	foreach my $md5 (keys %$sec_hash) {
-	    my $extra_info = join ':', @{$sec_hash->{$md5}};
-	    $db_h->do("INSERT INTO $config->{db_config}->{plugins_conf} (plugin_id, md5_name, section_name, extra_info) VALUES ($id, '$md5', '$section', '$extra_info') ON DUPLICATE KEY UPDATE section_name='$section', extra_info='$extra_info'");
-	}
-    }
+# sub addPluginConf {
+#     my ($self, $id, $info) = @_;
+#     my (@values, $sections);
+#     foreach my $section (keys %$info) {
+# 	my $sec_hash = $info->{$section};
+# 	foreach my $md5 (keys %$sec_hash) {
+# 	    my $extra_info = join ':', @{$sec_hash->{$md5}};
+# 	    $db_h->do("INSERT INTO $config->{db_config}->{plugins_conf} (plugin_id, md5_name, section_name, extra_info) VALUES ($id, '$md5', '$section', '$extra_info') ON DUPLICATE KEY UPDATE section_name='$section', extra_info='$extra_info'");
+# 	}
+#     }
+# }
+
+sub setPluginDefaults {
+    my ($self, $plugin_id) = @_;
+    my $plugin_info = $db_h->selectrow_arrayref("select inserted_in_tablename, plugin_name from $config->{db_config}->{plugins_table} where id=$plugin_id");
+    my ($sth, @columns);
+    $sth = $db_h->prepare("SELECT * FROM $plugin_info->[0] WHERE 1=0");
+    $sth->execute;
+    @columns = @{$sth->{NAME_lc}};
+    $sth->finish;
+
+    my $defaults = $db_h->selectrow_arrayref("select * from $config->{db_config}->{plugins_conf_default} where plugin_name='$plugin_info->[1]'");
+# ERROR Dumper($defaults);
+ERROR "We don't do anything bitch";
+return;
+    my ($only_in_a, $only_in_b, $common) = MindCommons::array_diff(\@columns, $columns_header);
+    $db_h->do("INSERT IGNORE INTO $config->{db_config}->{plugins_conf} (plugin_id, section_name, md5_name, extra_info) VALUES ($plugin_id, 'Not configured', '$_', '')") foreach @$only_in_a;
 }
+
+# sub addPluginConf {
+#     my ($self, $plugin_id, $md5_names) = @_;
+#     my (@values, $sections);
+#     foreach (@$md5_names) {
+# 	$db_h->do("INSERT IGNORE INTO $config->{db_config}->{plugins_conf} (plugin_id, section_name, md5_name, extra_info) VALUES ($plugin_id, 'Not configured', '$_', '')");
+#     }
+# }
 
 sub getPluginConf {
     my ($self, $plugin_id) = @_;
@@ -186,16 +200,22 @@ sub getPluginConf {
 	my @extra_info = split ":", $hash->{$key}->{extra_info};
 	$res->{$section}->{$key} = \@extra_info;
     }
-# LOGDIE Dumper("XXXXXXX",$res);
     return $res;
 }
 
-sub getPluginColumns {
-    my ($self, $plugin_id) = @_;
-    my $array = $db_h->selectcol_arrayref("select md5_name from $config->{db_config}->{plugins_conf} where plugin_id=$plugin_id");
-    my $res;
-    $res->{$_} = 1 foreach @$array;
-    return $res;
+# sub getPluginColumns {
+#     my ($self, $plugin_id) = @_;
+#     my $array = $db_h->selectcol_arrayref("select md5_name from $config->{db_config}->{plugins_conf} where plugin_id=$plugin_id");
+#     my $res;
+#     $res->{$_} = 1 foreach @$array;
+#     return $res;
+# }
+
+sub getPluginInfo {
+    my ($self, $file_id) = @_;
+    my $hash_ref = $db_h->selectall_hashref("select b.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{plugins_table} b where a.id=$file_id and b.id=a.plugin_id", 'id');
+    LOGDIE "Too many rows returned:".Dumper($hash_ref) if scalar (keys %$hash_ref) != 1;
+    return $hash_ref->{(keys %$hash_ref)[0]};
 }
 
 sub getColumnList {
@@ -371,25 +391,23 @@ sub get_md5_names {
     return $res;
 } 
 
-sub getPluginInfo {
-    my ($self, $file_id) = @_;
-    my $hash_ref = $db_h->selectall_hashref("select b.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{plugins_table} b where a.id=$file_id and b.id=a.plugin_id", 'id');
-    LOGDIE "Too many rows returned:".Dumper($hash_ref) if scalar (keys %$hash_ref) != 1;
-    return $hash_ref->{(keys %$hash_ref)[0]};
+sub get_plugin_update_rate {
+    my ($self, $plugin_id) = @_;
+    return 300;
 }
 
-sub getColumns {
-    my ($self, $table) = @_;
-    my ($sth, @columns);
-    $sth = $db_h->prepare("SELECT * FROM $table WHERE 1=0");
-    $sth->execute;
-    @columns = @{$sth->{NAME_lc}};
-    $sth->finish;
-
-    $sth = $db_h->prepare("SELECT * FROM $config->{db_config}->{md5_names_table} WHERE md5 in (". (join ",", map {$db_h->quote($_)} @columns).")");
-    $sth->execute() || LOGDIE "Error $DBI::errstr\n";
-    return $sth->fetchall_hashref('md5');
-}
+# sub getColumns {
+#     my ($self, $table) = @_;
+#     my ($sth, @columns);
+#     $sth = $db_h->prepare("SELECT * FROM $table WHERE 1=0");
+#     $sth->execute;
+#     @columns = @{$sth->{NAME_lc}};
+#     $sth->finish;
+# 
+#     $sth = $db_h->prepare("SELECT * FROM $config->{db_config}->{md5_names_table} WHERE md5 in (". (join ",", map {$db_h->quote($_)} @columns).")");
+#     $sth->execute() || LOGDIE "Error $DBI::errstr\n";
+#     return $sth->fetchall_hashref('md5');
+# }
 
 sub add_new_columns {
     my ($self, $table_name, $arr) = @_;
@@ -480,7 +498,7 @@ sub getWorkForStatsParsers {
     return $hash;
 }
 
-sub getWorkForLogparser {
+sub getWorkForLogParsers {
     my ($self, $status) = @_;
     my $hash = $db_h->selectall_hashref("select a.* from $config->{db_config}->{collected_file_table} a, $config->{db_config}->{plugins_table} b where status=$status and a.plugin_id=b.id and b.worker_type='logs'", 'id');
     $self->removeDuplicatePaths($hash);
