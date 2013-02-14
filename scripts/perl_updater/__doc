@@ -1,0 +1,8 @@
+main:
+sets 
+  collected_file_table ['customer_id', 'host_id', 'plugin_id', 'file_name', 'file_md5', 'size', 'status'];
+
+extract: 
+sets 
+  collected_file_table ['plugin_id', 'status']
+  plugins_table ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name', 'update_rate', 'needs_update', 'files_queue'++];
