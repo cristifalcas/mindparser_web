@@ -32,6 +32,10 @@ use constant {
 };
 
 our $stats_default_info = {
+	__template__ => { group_by	=> [""],# default none
+		 multi_value	=> [";"],	# default=;
+		 delim		=> ",",		# default=,
+		},
 	rts => { group_by	=> ["GwIP"],
 		 multi_value	=> [";"],
 		 delim		=> ",",

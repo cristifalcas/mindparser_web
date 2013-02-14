@@ -31,6 +31,11 @@ sub moveFile {
     move($filename, $new_name) or die "Move file $filename to $new_name failed: $!\n";
 }
 
+sub writeError {
+  my $errors = shift;
+  ERROR Dumper($errors);
+}
+
 sub run {
     my ($data, $dbh) = @_;
     INFO "Parsing file $data->{file_name}.\n";
@@ -46,7 +51,8 @@ sub run {
 	} else {
 	    LOGDIE "We don't know how to parse files of type $data->{plugin_info}->{plugin_name} yet.\n";
 	}
-	$ret = $parser->parse($data);
+	($ret, my $errors) = $parser->parse($data);
+	writeError($errors) if defined $errors && $errors !~ m/^\s*$/m;
 	moveFile($ret, $data);
     } else {
 	$ret = EXIT_NO_FILE;

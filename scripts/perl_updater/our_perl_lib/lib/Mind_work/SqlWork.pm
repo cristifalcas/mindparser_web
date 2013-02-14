@@ -19,7 +19,7 @@ use Definitions ':all';
 sub new {
     my $class = shift;
     my $self = { };
-    $db_h = DBI->connect("DBI:mysql:$config->{db_config}->{db_database}:10.0.0.99:3306", $config->{db_config}->{db_user}, $config->{db_config}->{db_pass},
+    $db_h = DBI->connect("DBI:mysql:$config->{db_config}->{db_database}:wikitiki.mindsoft.com:3306", $config->{db_config}->{db_user}, $config->{db_config}->{db_pass},
 	{ ShowErrorStatement => 1,
           AutoCommit => 1,
           RaiseError => 1,
@@ -48,22 +48,10 @@ sub insertFile {
     my $cust_id = $self->get_customer_id($file_hash->{machine}->{customer}) || EXIT_STATUS_NA;
     my $host_id = $self->get_host_id($file_hash->{machine}->{host}, $cust_id) || EXIT_STATUS_NA;
 
-    $db_h->do("INSERT INTO $config->{db_config}->{collected_file_table} 
-	    (customer_id,
-	     host_id,
-	     plugin_id,
-	     file_name,
-	     file_md5,
-	     size,
-	     status)
-	VALUES (
-	    $cust_id, 
-	    $host_id,".
-	    EXIT_STATUS_NA.",
-	    ".$db_h->quote($file_hash->{file_info}->{name}).", 
-	    ".$db_h->quote($file_hash->{file_info}->{md5}).", 
-	    $file_hash->{file_info}->{size},
-	    $status)") || LOGDIE "Error $DBI::errstr\n";
+    my $cols = ['customer_id', 'host_id', 'plugin_id', 'file_name', 'file_md5', 'size', 'status'];
+    my $vals = [$cust_id, $host_id, EXIT_STATUS_NA, $self->getQuotedString($file_hash->{file_info}->{name}), $self->getQuotedString($file_hash->{file_info}->{md5}), $file_hash->{file_info}->{size}, $status ];
+
+    $self->insertRowsTable($config->{db_config}->{collected_file_table}, $cols, ($vals))
 }
 
 sub increasePluginQueue {
@@ -176,11 +164,11 @@ sub setPluginDefaults {
     $sth->finish;
 
     my $defaults = $db_h->selectrow_arrayref("select * from $config->{db_config}->{plugins_conf_default} where plugin_name='$plugin_info->[1]'");
-# ERROR Dumper($defaults);
-ERROR "We don't do anything bitch";
-return;
-    my ($only_in_a, $only_in_b, $common) = MindCommons::array_diff(\@columns, $columns_header);
-    $db_h->do("INSERT IGNORE INTO $config->{db_config}->{plugins_conf} (plugin_id, section_name, md5_name, extra_info) VALUES ($plugin_id, 'Not configured', '$_', '')") foreach @$only_in_a;
+LOGDIE "We don't do anything bitch" if defined $defaults;
+    my ($only_in_a, $only_in_b, $common) = MindCommons::array_diff(\@columns, $defaults);
+
+    my ($only_here, $ignore1, $ignore2) = MindCommons::array_diff(\@columns, $columns_header);
+    $db_h->do("INSERT IGNORE INTO $config->{db_config}->{plugins_conf} (plugin_id, section_name, md5_name, extra_info) VALUES ($plugin_id, 'Not configured', '$_', '')") foreach @$only_here;
 }
 
 # sub addPluginConf {

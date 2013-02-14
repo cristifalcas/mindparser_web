@@ -13,11 +13,6 @@ use File::Path qw(make_path remove_tree);
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
 use Log::Log4perl qw(:easy);
-# Log::Log4perl->easy_init({ level   => $INFO,
-# #                            file    => ">>test.log" 
-# 			   layout   => "%d [%5p] (%6P) [%rms] [%M] - %m{chomp}\t%x\n",
-# });
-
 Log::Log4perl::init( \ <<'EOT' );
         log4perl.logger             = INFO, A1
 	log4perl.filter.ExcludeMe = sub { !/Reading additional config from/ }
@@ -32,7 +27,6 @@ use File::Basename;
 use lib (fileparse(abs_path($0), qr/\.[^.]*/))[1]."our_perl_lib/lib"; 
 use File::Copy;
 use Definitions ':all';
-#     use Time::Local;
 
 my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
 my $config = MindCommons::xmlfile_to_hash("config.xml");
@@ -52,7 +46,6 @@ sub reap_children {
     my $thread_nr;
     my $pid = waitpid(-1, WNOHANG);
     my $exit_status = $? >> 8;
-#     my $q = $exit_status >> 8;
     if ($pid > 0) {
 	LOGDIE  "Unknown pid: $pid.\n".Dumper($running) if ! defined $running->{$pid};
 	$thread_nr = $running->{$pid}->{'thread_nr'};
@@ -268,8 +261,8 @@ sub main_process_worker {
     my $dbh = new SqlWork();
     $dbh->clean_existing_files();
     $dbh->nulifyPluginsQueue();
-    addFilesDB ($_, $dbh) foreach (MindCommons::find_files_recursively($uploads_dir));
-    assign_watchers($uploads_dir);
+#     addFilesDB ($_, $dbh) foreach (MindCommons::find_files_recursively($uploads_dir));
+    assign_watchers($uploads_dir, $dbh);
 
     while (1) {
 	my @events = $inotify->read;
@@ -310,13 +303,16 @@ sub watch_handler {
 }
 
 sub assign_watchers {
-    my $path = shift;
+    my ($path, $dbh) = @_;
     my @files = MindCommons::find_files_recursively($path);
     foreach my $file (@files){
 	if (-d $file && ! defined $watched_folders->{$file}) {
 	    INFO "Watching new dir $file.\n";
 	    $inotify->watch($file, IN_CREATE|IN_CLOSE_WRITE|IN_DELETE_SELF|IN_MOVED_FROM|IN_MOVED_TO, \&watch_handler);
 	    $watched_folders->{$file} = 1;
+	} elsif (-f $file) {
+	    INFO "Found new file $file.\n";
+	    addFilesDB ($file, $dbh);
 	}
     }
 }

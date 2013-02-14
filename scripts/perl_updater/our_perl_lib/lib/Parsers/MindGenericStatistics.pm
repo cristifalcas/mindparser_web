@@ -185,7 +185,7 @@ sub parse {
 $t0 = [gettimeofday];$t1=[gettimeofday];$t2=[gettimeofday];
     open (MYFILE, $filename) or LOGDIE  "Couldn't open $filename: $!";
     while (<MYFILE>) {
-if ($nr_lines % $max_rows == 0){INFO "between $max_rows lines took : ".tv_interval($t2)."\n";$t2=[gettimeofday];};
+if ($nr_lines % $max_rows == 0){INFO "Parsing and inserting $max_rows lines took : ".tv_interval($t2)."\n";$t2=[gettimeofday];};
 	my $line = $_;
 	$nr_lines++;
 $fucker_line = $line;
@@ -204,7 +204,7 @@ $fucker_header = $line;
 		next;
 	    }
 	    if ($header_nr_elem != scalar @line_arr) {
-		$errors .= updateError($nr_lines, "header and values don't match.");
+		$errors .= updateError($nr_lines, "Header and values don't match.");
 		next;
 	    }
 	    my ($timestamp, $values, $multi_values) = extractValues(@line_arr);
@@ -220,8 +220,7 @@ $fucker_header = $line;
     insertRows($header, $hash_vals, $table_name);
     $dbh->updateFileColumns($data->{id}, ['parse_duration','parse_done_time'], [$dbh->getQuotedString($t0), 'NOW()']);
     INFO "Done stats for file $filename in ".tv_interval($t0)." ms.\n";
-LOGDIE Dumper($errors);
-    return START_MUNIN;
+    return (START_MUNIN,$errors);
 }
 
 return 1; 

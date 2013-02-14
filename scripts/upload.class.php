@@ -524,6 +524,7 @@ class UploadHandler
             $upload_dir = $this->get_upload_path();
             if (!is_dir($upload_dir)) {
                 mkdir($upload_dir, $this->options['mkdir_mode'], true);
+		chgrp($upload_dir, 'nobody');
             }
             $file_path = $this->get_upload_path($file->name);
             $append_file = $content_range && is_file($file_path) &&
@@ -547,6 +548,7 @@ class UploadHandler
                     $append_file ? FILE_APPEND : 0
                 );
             }
+	    chgrp($file_path, 'nobody');
             $file_size = $this->get_file_size($file_path, $append_file);
             if ($file_size === $file->size) {
                 if ($this->options['orient_image']) {
