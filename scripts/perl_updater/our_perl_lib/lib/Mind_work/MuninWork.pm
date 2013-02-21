@@ -32,7 +32,6 @@ use Mind_work::MindCommons;
 my $config_xml = MindCommons::xmlfile_to_hash("config.xml");
 my $script_path = (fileparse(abs_path($0), qr/\.[^.]*/))[1]."";
 my $plugins_conf_dir = "$script_path/".$config_xml->{dir_paths}->{plugins_conf_dir_postfix};
-my ($work_dir, $spoolwriter);
 
 # "$Munin::Common::Defaults::MUNIN_CONFDIR"
 # "$Munin::Common::Defaults::MUNIN_SPOOLDIR"
@@ -41,64 +40,61 @@ my ($work_dir, $spoolwriter);
 sub initVars {
     my ($input, $dbh) = @_;
 
-    my $munin_config = munin_readconfig_base("$Munin::Common::Defaults::MUNIN_CONFDIR/munin.conf");
-    $input->{munin_dbdir} = $munin_config->{dbdir};
-    $input->{includedir} = $munin_config->{includedir};
+#     my $munin_config = munin_readconfig_base("$Munin::Common::Defaults::MUNIN_CONFDIR/munin.conf");
+#     $input->{munin_dbdir} = $munin_config->{dbdir};
+#     $input->{includedir} = $munin_config->{includedir};
 
     $input->{cust_name} =  $dbh->get_customer_name_from_host_id($input->{host_id});
     $input->{host_name} =  $dbh->get_host_name($input->{host_id});
     $input->{rate} = $dbh->get_plugin_update_rate($input->{plugin_id});
 
-    $work_dir = "$config_xml->{dir_paths}->{filetmp_dir}/munin/$input->{cust_name}_$input->{host_name}_$input->{plugin_name}/";
-    $input->{conf_file} = "$work_dir/$input->{cust_name}_$input->{host_name}.conf";
+    $input->{config} = $dbh->getPluginConf($input->{id});
+    my $columns = $dbh->getColumnList($input->{inserted_in_tablename});
+    $input->{columns_md5} = $dbh->get_names_from_md5($columns);
 
-#     DEBUG "Removing work dir $work_dir.\n";
-    rmtree ($work_dir);
-    make_path $work_dir || LOGDIE "can't create spool dir $work_dir: $!\n";
-    if (! -d "$input->{munin_dbdir}/$input->{cust_name}/") {
-	make_path "$input->{munin_dbdir}/$input->{cust_name}/" || LOGDIE "can't make dir $input->{munin_dbdir}/$input->{cust_name}/: $!\n"
-    };
-    if (! -d "$input->{munin_dbdir}/mind_munin_datafiles") {
-	make_path("$input->{munin_dbdir}/mind_munin_datafiles") || LOGDIE "can't make dir: $!\n";
-    }
-    system("ln", "-s", "$input->{munin_dbdir}/$input->{cust_name}/", "$work_dir/") == 0 || LOGDIE "can't symlink rrd dir: $!\n";
+    my $work_dir = "$config_xml->{dir_paths}->{munin}/work/$input->{cust_name}_$input->{host_name}_$input->{plugin_name}/";
+    $input->{conf_file} = "$work_dir/conf.d/$input->{cust_name}_$input->{host_name}.conf";
+    $input->{munin_dbdir} = "$work_dir/files/";
+    $input->{from_time} =  lastTimeFromRRDFiles($input);
 
-
-    $spoolwriter = Munin::Node::SpoolWriter->new(
-	spooldir => $work_dir,
-    ## munin will not update previous day on day change at all otherwise
-	interval_size => 86400 * 365,
-	interval_keep => 365,
-	hostname  => "$input->{host_name}.$input->{cust_name}",
-    );
+#     rmtree ($work_dir);
+#     make_path $work_dir || LOGDIE "can't create workdir dir $work_dir: $!\n";
+    make_path $input->{munin_dbdir} || LOGDIE "can't create dbdir dir $input->{munin_dbdir}: $!\n";
+#     make_path "$input->{munin_dbdir}/$input->{cust_name}/" || LOGDIE "can't make dir $input->{munin_dbdir}/$input->{cust_name}/: $!\n"
+#     if (! -d "$input->{munin_dbdir}/mind_munin_datafiles") {
+# 	make_path("$input->{munin_dbdir}/mind_munin_datafiles") || LOGDIE "can't make dir: $!\n";
+#     }
+#     system("ln", "-s", "$input->{munin_dbdir}/$input->{cust_name}/", "$work_dir/") == 0 || LOGDIE "can't symlink rrd dir: $!\n";
 }
 
 sub writeMuninConfFiles {
     my $input = shift;
     my $full_hostname = "$input->{host_name}.$input->{cust_name}";
 
-    ##fake dirs in file for real munin
-#     open(MYOUTFILE, ">$Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$full_hostname") || LOGDIE "can't open file $Munin::Common::Defaults::MUNIN_CONFDIR/munin-conf.d/$full_hostname: $!\n";
-    open(MYOUTFILE, ">$input->{includedir}/$full_hostname") || LOGDIE "can't open file $input->{includedir}/$full_hostname: $!\n";
-    print MYOUTFILE "[$full_hostname]
-      update yes
-      address ssh://munin\@localhost /usr/share/munin/munin-async --spoolfetch --spooldir /tmp/munin_db_fake_dir\n";
-    close(MYOUTFILE);
+# # #     ##fake dirs in file for real munin
+# # #     open(MYOUTFILE, ">$work_dir/conf/$full_hostname") || LOGDIE "can't open file $work_dir/conf/$full_hostname: $!\n";
+# # #     print MYOUTFILE "[$full_hostname]
+# # #       update no
+# # #       address ssh://munin\@localhost /usr/share/munin/munin-async --spoolfetch --spooldir /tmp/munin_db_fake_dir\n";
+# # #     close(MYOUTFILE);
 
-    ## real conf file for us
+# # #     ## real conf file for us
+    my ($name, $dir, $suffix) = fileparse($input->{conf_file}, qr/\.[^.]*/);
+    make_path $dir || LOGDIE "can't create dir $dir: $!\n";
     open(MYOUTFILE, ">$input->{conf_file}") || LOGDIE "can't open file $input->{conf_file}: $!\n";
-    print MYOUTFILE "rundir $work_dir
-dbdir $work_dir
+    print MYOUTFILE "rundir $input->{munin_dbdir}
+dbdir $input->{munin_dbdir}
 
 [$full_hostname]
       update yes
-      address ssh://munin\@localhost /usr/share/munin/munin-async --spoolfetch --spooldir $work_dir --cleanup\n";
+      address ssh://munin\@localhost /usr/share/munin/munin-async --spoolfetch --spooldir $input->{munin_dbdir} --cleanup\n";
     close(MYOUTFILE);
 }
 
 sub lastTimeFromRRDFiles {
     my $input = shift;
     my $last_timestamp = 0;
+# LOGDIE Dumper($input->{munin_dbdir}, $input->{cust_name}, $input->{host_name}, $input->{cust_name}, $input->{plugin_name});
     foreach my $file (glob("$input->{munin_dbdir}/$input->{cust_name}/$input->{host_name}.$input->{cust_name}-$input->{plugin_name}*")){
 	last if ! -s $file;
 	my $timestamp = `rrdtool info "$file"` || LOGDIE "can't run rrdtool info $file`\n";
@@ -109,62 +105,6 @@ sub lastTimeFromRRDFiles {
     };
     return $last_timestamp;
 }
-
-# sub configPluginsDefault {
-#     my ($colums_name, $name) = @_;
-#     my $plugin_conf_template = "$plugins_conf_dir/$name.conf";
-#     if (! -f $plugin_conf_template || ! -s $plugin_conf_template){
-# 	open(FILE, ">$plugin_conf_template") or LOGDIE "Can't open file $plugin_conf_template for writing: $!\n";
-# 	print FILE $colums_name->{$_}->{name}."\n" foreach (keys %$colums_name);
-# 	close(FILE);
-# 	LOGDIE "Config first the plugin in $plugin_conf_template.\n";
-#     }
-# 
-#     open(FILE, $plugin_conf_template) or LOGDIE "Can't open file for reading: $!\n";
-#     my ($section, $config);
-#     foreach my $line (<FILE>) {
-# 	$line =~ s/(\n*|\r*)//g;
-# 	if ($line =~ m/^\s*\[(.*?)\]\s*$/){
-# 	    my $name = $1;
-# 	    my @extra_args = split /:/, $name;
-# 	    $section = shift @extra_args;
-# 	    $config->{$section}->{__munin_extra_info} = \@extra_args;
-# 	    DEBUG "Got new section $section.\n";
-# 	} else {
-# 	    LOGDIE "Config first the plugin in $plugin_conf_template.\n" if ! defined $section;
-# 	    foreach my $md5 (keys %$colums_name) {
-# 		my $name = $colums_name->{$md5}->{name};
-# 		if ($name =~ m/^$line$/i) {
-# 		    $config->{$section}->{$md5} = [];
-# 		    last;
-# 		}
-# 	    }
-# 	}
-#     }
-#     close(FILE);
-#     return $config;
-# }
-
-# sub configPlugins {
-#     my ($input, $dbh) = @_;
-#     my $colums_name = $dbh->getColumns($input->{inserted_in_tablename});
-#     $input->{nr_rows_from_db} = sprintf("%.0f", 20000/(scalar (keys %$colums_name)))+2;
-#     DEBUG "Retrieving rows in batches of $input->{nr_rows_from_db}\n";
-# 
-#     my $config_fs = configPluginsDefault($colums_name, $input->{plugin_name});
-#     my $config_db = $dbh->getPluginConf($input->{id});
-# # LOGDIE Dumper($config_fs,$config_db);
-#     my $config;
-#     my $already_defined_columns = $dbh->getPluginColumns($input->{id});
-#     foreach my $key (keys %$colums_name){
-# 	if (! defined $already_defined_columns->{$key} && $key ne "__munin_extra_info") {
-# 	    $config->{'Not configured'}->{$key} = [];
-# 	    $config->{'Not configured'}->{__munin_extra_info} = [];
-# 	}
-#     }
-#     $dbh->addPluginConf($input->{id}, $config);
-#     return $config_fs;
-# }
 
 sub getHeaderMunin {
     my $input = shift;
@@ -182,10 +122,18 @@ sub getHeaderMunin {
 }
 
 sub write_to_spool {
-    my ($q, $timestamp, $config, $input, $group) = @_;
+    my ($q, $timestamp, $input, $group) = @_;
+    my $spoolwriter = Munin::Node::SpoolWriter->new(
+	spooldir => $input->{munin_dbdir},
+    ## munin will not update previous day on day change at all otherwise
+	interval_size => 86400 * 365,
+	interval_keep => 365,
+	hostname  => "$input->{host_name}.$input->{cust_name}",
+    );
+
     foreach my $section (keys %$q) {
-	delete $config->{$section}->{__munin_extra_info};
-	my $hash = $config->{$section};
+	delete $input->{config}->{$section}->{__munin_extra_info};
+	my $hash = $input->{config}->{$section};
 	my $nr_values = scalar keys %$hash;
 	if ($nr_values > 1){
 	    push @{ $q->{$section} }, ("wrongdata_all.cdef ".(join ",", keys %$hash).(",+" x ($nr_values-1)) );
@@ -204,43 +152,16 @@ sub write_to_spool {
 	my $name_ok = "$input->{plugin_name}_$section";
 	$name_ok .= "_$group" if defined $group && $group  !~ m/^\s*$/;
 	$name_ok =~ s/[^a-z0-9_]/_/gi;
-# print Dumper($q);
+
 	$spoolwriter->write($timestamp, $name_ok, $q->{$section}) ;
     }
 }
 
 sub make_munin_info {
-    my ($row, $dbh, $input, $config, $md5_to_section, $group) = @_;
-# # print Dumper($row, $dbh, $input, $config, $md5_to_section, $group);
-#     my @header = getHeaderMunin($input);
-#     my $colums_name = $dbh->getColumns($input->{inserted_in_tablename});
-#     my $q;
-#     foreach my $md5 (keys %$row) {
-# 	next if $md5 =~ m/^(host_id|file_id|timestamp|group_by)$/i;
-# 	next if ! defined $row->{$md5};
-# 	my $name = $colums_name->{$md5}->{name};#."_$group";
-# 	my $val = $row->{$md5};
-# 	my $section = $md5_to_section->{$md5};
-# 	## push once only graph_title, header and args for title
-# 	if (! defined $q->{$section} ) {
-# 	    push @{ $q->{$section} }, @{ $config->{$section}->{__munin_extra_info} } if defined $config->{$section}->{__munin_extra_info};
-# 	    push @{ $q->{$section} }, (@header, "graph_title $section $group");
-# 	}
-# 	push @{ $q->{$section} }, (
-# 	    "$md5.label $name",
-# 	    "$md5.info $name",
-# 	    "$md5.value $val",
-# 	);
-# # 		push @{ $all_md5_per_section->{$section} }, ($md5);
-#     }
-#     return $q;
-}
+    my ($row, $dbh, $input, $group) = @_;
 
-sub addRowsToRRD {
-    my ($input, $dbh, $db_h, $group, $config) = @_;
-    DEBUG "Doing work for group $group from $input->{inserted_in_tablename}.\n";
-    my $from_time = $input->{from_time};
     my $md5_to_section;
+    my $config = $input->{config};
     foreach my $section (keys %$config){
 	my $md5s = $config->{$section};
 	foreach my $md5 (keys %$md5s){
@@ -248,35 +169,67 @@ sub addRowsToRRD {
 	}
     }
 
-    my $total_rows = $db_h->selectrow_array("SELECT count(*) FROM $input->{inserted_in_tablename} WHERE host_id=$input->{host_id} and group_by='$group' and timestamp>=$from_time order by timestamp asc");
-    DEBUG "\tGetting max $input->{nr_rows_from_db} out of $total_rows lines from $input->{inserted_in_tablename} with host $input->{host_name}, timestamp=$from_time.\n";
-    my $sth = $db_h->prepare("SELECT * FROM $input->{inserted_in_tablename} WHERE host_id=$input->{host_id} and group_by='$group' and timestamp > ? order by timestamp asc limit ?");
-    $sth->execute($from_time, $from_time ? $input->{nr_rows_from_db} : 1) || LOGDIE "Error $DBI::errstr\n";
+    my $columns_header_string = join "\t", @$columns_header;
+    my @header = getHeaderMunin($input);
+    my $q;
+    foreach my $md5 (keys %$row) {
+	next if $columns_header_string =~ m/$md5/i || ! defined $row->{$md5};
+	my $name = $input->{columns_md5}->{$md5};#."_$group";
+	my $val = $row->{$md5};
+	my $section = $md5_to_section->{$md5};
+	## push once only graph_title, header and args for title
+	if (! defined $q->{$section} ) {
+	    push @{ $q->{$section} }, @{ $config->{$section}->{__munin_extra_info} } if defined $config->{$section}->{__munin_extra_info};
+	    push @{ $q->{$section} }, (@header, "graph_title $section $group");
+	}
+	push @{ $q->{$section} }, (
+	    "$md5.label $name",
+	    "$md5.info $name",
+	    "$md5.value $val",
+	);
+# 		push @{ $all_md5_per_section->{$section} }, ($md5);
+    }
+    return $q;
+}
 
-    unlink "$work_dir/state-$input->{cust_name}-$input->{host_name}.$input->{cust_name}.storable";
-#     $group =~ s/[^a-z0-9]/_/gi;
+sub addRowsToRRD {
+    my ($input, $dbh, $group) = @_;
+
+    DEBUG "Doing work for group $group from $input->{inserted_in_tablename}.\n";
+    my $from_time = $input->{from_time};
+    my $nr_rows_from_db = sprintf("%.0f", 20000/(scalar keys %{ $input->{columns_md5} }))+2;
+    DEBUG "Retrieving rows in batches of $nr_rows_from_db\n";
+
+    my $db_h = $dbh->getDBI_handler();
+    my $total_rows = $db_h->selectrow_array("SELECT count(*) FROM $input->{inserted_in_tablename} WHERE host_id=$input->{host_id} and group_by='$group' and timestamp>=$from_time order by timestamp asc");
+    DEBUG "\tGetting max $nr_rows_from_db out of $total_rows lines from $input->{inserted_in_tablename} with host $input->{host_name}, timestamp=$from_time.\n";
+    my $sth = $db_h->prepare("SELECT * FROM $input->{inserted_in_tablename} WHERE host_id=$input->{host_id} and group_by='$group' and timestamp > ? order by timestamp asc limit ?");
+    $sth->execute($from_time, $from_time ? $nr_rows_from_db : 1) || LOGDIE "Error $DBI::errstr\n";
+
+    my $storable_file = "state-$input->{cust_name}-$input->{host_name}.$input->{cust_name}.storable";
+    unlink "$input->{munin_dbdir}/$storable_file";
+    $group =~ s/[^a-z0-9]/_/gi;
 
     my $crt_rows = 0;
     while (my $aref = $sth->fetchall_arrayref({}) ){
 	DEBUG "\tgot nr rows : ".(scalar @$aref).".\n";
 	last if ! (scalar @$aref);
-	TRACE "\tDelete all files $work_dir/munin-daemon.$input->{plugin_name}*.\n";
-	unlink glob ("$work_dir/munin-daemon.$input->{plugin_name}*");
+	TRACE "\tDelete all files $input->{munin_dbdir}/munin-daemon.$input->{plugin_name}*.\n";
+	unlink glob ("$input->{munin_dbdir}/munin-daemon.$input->{plugin_name}*");
 # Alon;RTS2.Alon:asc_Memory.CDEF wrongdata=allusers,UN,INF,UNKN,IF
 	foreach my $row (@$aref){
-	    my $q = make_munin_info($row, $dbh, $input, $config, $md5_to_section, $group);
-	    write_to_spool($q, $row->{timestamp}, $config, $input, $group);
+	    my $q = make_munin_info($row, $dbh, $input, $group);
+	    write_to_spool($q, $row->{timestamp}, $input, $group);
 	    $from_time = $row->{timestamp};
 	}
-
 	my $logger = get_logger();
-	my $munin_debug = $logger->is_debug() ? "--debug" : "";
+	my $munin_debug = $logger->is_debug() || 1 ? "--debug" : "";
 	DEBUG "\tRunning munin-update for $input->{host_name}.$input->{cust_name} in $input->{inserted_in_tablename}\n";
 	system("/usr/share/munin/munin-update", "--config_file=$input->{conf_file}", "--nofork", $munin_debug) == 0 or LOGDIE "Munin died.\n";
-	$sth->execute($from_time, $input->{nr_rows_from_db}) || LOGDIE "Error $DBI::errstr\n";
-
-	if (! $crt_rows && -f "$work_dir/datafile") {
-	    copy ("$work_dir/datafile", "$input->{munin_dbdir}/mind_munin_datafiles/$input->{cust_name}.$input->{host_name}.$input->{plugin_name}.$group.datafile") || LOGDIE "can't copy file: $!\n";
+	$sth->execute($from_time, $nr_rows_from_db) || LOGDIE "Error $DBI::errstr\n";
+LOGDIE "/usr/share/munin/munin-update --config_file=$input->{conf_file} --nofork";
+	if (! $crt_rows && -f "$input->{munin_dbdir}/datafile") {
+	    copy ("$input->{munin_dbdir}/datafile", "$input->{munin_dbdir}/mind_munin_datafiles/$input->{cust_name}.$input->{host_name}.$input->{plugin_name}.$group.datafile") || LOGDIE "can't copy file: $!\n";
 	}
 
 	$crt_rows += scalar @$aref;
@@ -289,27 +242,22 @@ sub run {
     my ($data, $dbh) = @_;
     DEBUG "Start munin work for $data->{id}.\n";
     initVars($data, $dbh);
-    $data->{from_time} =  lastTimeFromRRDFiles($data);
-#     my $config = configPlugins($data, $dbh);
-my $config;
     writeMuninConfFiles($data);
-    my $db_h = $dbh->getDBI_handler();
-    my $all_groups = $db_h->selectall_arrayref("SELECT DISTINCT group_by FROM $data->{inserted_in_tablename} WHERE host_id=$data->{host_id}");
 
-    addRowsToRRD($data, $dbh, $db_h, $_->[0], $config) foreach (sort @$all_groups);
-#     rmtree ($work_dir);
+    my $all_groups = $dbh->getGroupsForPlugin($data->{host_id});
+    addRowsToRRD($data, $dbh, $_->[0]) foreach (sort @$all_groups);
     $dbh->setNeedsUpdate ($data->{id}, 0);
 
     return 0;
 }
 
-sub finish {
-    my ($ret, $data, $dbh) = @_;
+# sub finish {
+#     my ($ret, $data, $dbh) = @_;
 
 # print Dumper($data);
 #     $dbh->updateFileColumns($_, ['status'], [$ret]) foreach (@$data);
 #     my $sth = $db_h->do("update $config->{db_config}->{collected_file_table} set status=$ret WHERE id in (". (join ",", @$data).")") || die "Error $DBI::errstr\n";
-}
+# }
 
 # http://munin-monitoring.org/wiki/MultigraphSampleOutput
 # http://munin-monitoring.org/wiki/protocol-config

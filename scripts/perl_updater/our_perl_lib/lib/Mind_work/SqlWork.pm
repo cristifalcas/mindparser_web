@@ -142,18 +142,6 @@ sub getQuotedString {
     return $db_h->quote($string);
 }
 
-# sub addPluginConf {
-#     my ($self, $id, $info) = @_;
-#     my (@values, $sections);
-#     foreach my $section (keys %$info) {
-# 	my $sec_hash = $info->{$section};
-# 	foreach my $md5 (keys %$sec_hash) {
-# 	    my $extra_info = join ':', @{$sec_hash->{$md5}};
-# 	    $db_h->do("INSERT INTO $config->{db_config}->{plugins_conf} (plugin_id, md5_name, section_name, extra_info) VALUES ($id, '$md5', '$section', '$extra_info') ON DUPLICATE KEY UPDATE section_name='$section', extra_info='$extra_info'");
-# 	}
-#     }
-# }
-
 sub setPluginDefaults {
     my ($self, $plugin_id) = @_;
     my $plugin_info = $db_h->selectrow_arrayref("select inserted_in_tablename, plugin_name from $config->{db_config}->{plugins_table} where id=$plugin_id");
@@ -171,34 +159,18 @@ LOGDIE "We don't do anything bitch" if defined $defaults;
     $db_h->do("INSERT IGNORE INTO $config->{db_config}->{plugins_conf} (plugin_id, section_name, md5_name, extra_info) VALUES ($plugin_id, 'Not configured', '$_', '')") foreach @$only_here;
 }
 
-# sub addPluginConf {
-#     my ($self, $plugin_id, $md5_names) = @_;
-#     my (@values, $sections);
-#     foreach (@$md5_names) {
-# 	$db_h->do("INSERT IGNORE INTO $config->{db_config}->{plugins_conf} (plugin_id, section_name, md5_name, extra_info) VALUES ($plugin_id, 'Not configured', '$_', '')");
-#     }
-# }
-
 sub getPluginConf {
     my ($self, $plugin_id) = @_;
     my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_conf} where plugin_id=$plugin_id order by section_name", ['md5_name']);
     my $res;
     foreach my $key (keys %$hash){
 	my $section = $hash->{$key}->{section_name};
-	print "Using section $section.\n";
+	DEBUG "Using section $section.\n";
 	my @extra_info = split ":", $hash->{$key}->{extra_info};
 	$res->{$section}->{$key} = \@extra_info;
     }
     return $res;
 }
-
-# sub getPluginColumns {
-#     my ($self, $plugin_id) = @_;
-#     my $array = $db_h->selectcol_arrayref("select md5_name from $config->{db_config}->{plugins_conf} where plugin_id=$plugin_id");
-#     my $res;
-#     $res->{$_} = 1 foreach @$array;
-#     return $res;
-# }
 
 sub getPluginInfo {
     my ($self, $file_id) = @_;
@@ -209,12 +181,18 @@ sub getPluginInfo {
 
 sub getColumnList {
   my($self, $table) = @_;
-  
+
   my $sth = $db_h->prepare("SELECT * FROM $table WHERE 1=0");
   $sth->execute || LOGDIE "Error $DBI::errstr\n";
   my $cols = $sth->{NAME}; # or NAME_lc if needed
   $sth->finish;
   return $cols;
+}
+
+sub getGroupsForPlugin {
+    my ($self, $plugin_id) = @_;
+    my $res = $db_h->selectrow_arrayref("select inserted_in_tablename, host_id from $config->{db_config}->{plugins_table} WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
+    return $db_h->selectall_arrayref("SELECT DISTINCT group_by FROM $res->[0] WHERE host_id=$res->[1]") || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub getCustomers {
@@ -367,12 +345,22 @@ sub get_file_name {
     return $arr_ref->[0];
 }
 
+sub get_names_from_md5 {
+    my ($self, $arr) = @_;
+    my $names = $db_h->selectall_hashref("select * from $config->{db_config}->{md5_col_names} where md5 in ( '".(join "', '", @$arr)."' )", 'md5');
+    my $res;
+    $res->{$_} = $names->{$_}->{name} foreach (keys %$names);
+    return $res;
+}
+
 sub get_md5_names {
     my ($self, $arr) = @_;
-    my $existing = $db_h->selectall_hashref("select * from $config->{db_config}->{md5_names_table}", 'name');
+    my $existing = $db_h->selectall_hashref("select * from $config->{db_config}->{md5_col_names}", 'name');
 
+    my $columns_header_string = join "\t", @$columns_header;
     my $res;
     foreach (@$arr){
+	next if $columns_header_string =~ m/$_/;
 # 	next if $_ eq 'id' || $_ eq 'file_id' || $_ eq 'host_id' || $_ eq 'timestamp' || $_ eq 'group_by';
 	LOGDIE "ce ma fac cu $_?\n" if ! defined $existing->{$_};
 	$res->{$_} = $existing->{$_}->{md5};
@@ -385,30 +373,17 @@ sub get_plugin_update_rate {
     return 300;
 }
 
-# sub getColumns {
-#     my ($self, $table) = @_;
-#     my ($sth, @columns);
-#     $sth = $db_h->prepare("SELECT * FROM $table WHERE 1=0");
-#     $sth->execute;
-#     @columns = @{$sth->{NAME_lc}};
-#     $sth->finish;
-# 
-#     $sth = $db_h->prepare("SELECT * FROM $config->{db_config}->{md5_names_table} WHERE md5 in (". (join ",", map {$db_h->quote($_)} @columns).")");
-#     $sth->execute() || LOGDIE "Error $DBI::errstr\n";
-#     return $sth->fetchall_hashref('md5');
-# }
-
 sub add_new_columns {
     my ($self, $table_name, $arr) = @_;
     DEBUG "Acquiring lock\n";
-    $db_h->do("LOCK TABLES $table_name WRITE, $config->{db_config}->{md5_names_table} WRITE");
+    $db_h->do("LOCK TABLES $table_name WRITE, $config->{db_config}->{md5_col_names} WRITE");
     my $sha1_hash;
     $sha1_hash->{"x_".MindCommons::get_string_sha($_)} = $_ foreach (@$arr);
-    my $md5_existing = $db_h->selectall_hashref("select * from $config->{db_config}->{md5_names_table}", 'md5');
+    my $md5_existing = $db_h->selectall_hashref("select * from $config->{db_config}->{md5_col_names}", 'md5');
     foreach (keys %$sha1_hash){
 	next if defined $md5_existing->{$_};
-	INFO "Adding new rows $sha1_hash->{$_} ($_) in $config->{db_config}->{md5_names_table}\n";
-	$db_h->do("INSERT IGNORE INTO $config->{db_config}->{md5_names_table} (md5, name) VALUES ('$_', '$sha1_hash->{$_}')");
+	INFO "Adding new rows $sha1_hash->{$_} ($_) in $config->{db_config}->{md5_col_names}\n";
+	$db_h->do("INSERT IGNORE INTO $config->{db_config}->{md5_col_names} (md5, name) VALUES ('$_', '$sha1_hash->{$_}')");
     }
     my $columns_e = getColumnList($self, $table_name);
     my $md5_columns = ['file_id', 'timestamp', keys %$sha1_hash];

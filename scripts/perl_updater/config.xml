@@ -6,7 +6,7 @@
     <collected_file_table>__collected_files</collected_file_table>
     <cust_table>__customers</cust_table>
     <host_table>__hosts</host_table>
-    <md5_names_table>__md5_col_names</md5_names_table>
+    <md5_col_names>__md5_col_names</md5_col_names>
     <stats_template_table>__statistics_template</stats_template_table>
     <plugins_table>__mind_plugins</plugins_table>
     <plugins_conf>__mind_plugins_conf</plugins_conf>
@@ -15,7 +15,8 @@
   <dir_paths>
     <filedone_dir>/var/www/html/mindparser/scripts/done/</filedone_dir>
     <fileerr_dir>/var/www/html/mindparser/scripts/error/</fileerr_dir>
-    <filetmp_dir>/tmp/mind_parser/</filetmp_dir>
+    <filetmp_dir>/var/www/html/mindparser/scripts/tmp/</filetmp_dir>
+    <munin>/var/www/html/mindparser/scripts/munin/</munin>
     <uploads_dir>/var/www/html/mindparser/scripts/uploads/</uploads_dir>
     <plugins_conf_dir_postfix>plugins_conf</plugins_conf_dir_postfix>
     <munin_conf_dir_postfix>munin.conf</munin_conf_dir_postfix>
