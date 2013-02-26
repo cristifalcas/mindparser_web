@@ -107,8 +107,8 @@ sub run {
 	    my $type = lc($3);
 	    my $plugin_name = lc($app);
 	    $type = "statistics" if $type eq "statistic"; ## fix for asc
-	    my $columns = ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name', 'update_rate'];
-	    my $values = [$data->{customer_id}, $data->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name), -1];
+	    my $columns = ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name'];
+	    my $values = [$data->{customer_id}, $data->{host_id}, $dbh->getQuotedString($table_name), $dbh->getQuotedString($type), $dbh->getQuotedString($app), $dbh->getQuotedString($plugin_name)];
 	    my $plugin_id = $dbh->getIDUsed ($config->{db_config}->{plugins_table}, $columns, $values);
 	    if (! defined $plugin_id) {
 		## add new plugin row
@@ -116,8 +116,8 @@ sub run {
 		## retrieve the pluginid
 		$plugin_id = $dbh->getIDUsed ($config->{db_config}->{plugins_table}, $columns, $values);
 	    }
-	    $plugin_id = -1 if ! defined $plugin_id || $plugin_id !~ m/^[0-9]+$/;;
-	    $dbh->setNeedsUpdate ($plugin_id, 1);
+	    LOGDIE "Can't detect plugin id." if ! defined $plugin_id || $plugin_id !~ m/^[0-9]+$/;
+	    $dbh->setNeedsUpdate ($plugin_id);
 	    ## set the new pluginid to the file
 	    $dbh->updateFileColumns ($data->{id}, ['plugin_id'], [$plugin_id]);
 	    $dbh->increasePluginQueue($plugin_id);

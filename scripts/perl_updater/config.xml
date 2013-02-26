@@ -16,7 +16,7 @@
     <filedone_dir>/var/www/html/mindparser/scripts/done/</filedone_dir>
     <fileerr_dir>/var/www/html/mindparser/scripts/error/</fileerr_dir>
     <filetmp_dir>/var/www/html/mindparser/scripts/tmp/</filetmp_dir>
-    <munin>/var/www/html/mindparser/scripts/munin/</munin>
+    <generic_spooldir>/media/munin_files/spool_dir/</generic_spooldir>
     <uploads_dir>/var/www/html/mindparser/scripts/uploads/</uploads_dir>
     <plugins_conf_dir_postfix>plugins_conf</plugins_conf_dir_postfix>
     <munin_conf_dir_postfix>munin.conf</munin_conf_dir_postfix>

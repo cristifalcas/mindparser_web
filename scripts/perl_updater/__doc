@@ -1,6 +1,10 @@
 ssh-keygen -t rsa
 cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
+cat /etc/cron.d/munin:
+*/5 * * * *     munin test -x /usr/bin/munin-cron && cat /media/munin_files/generated_dbfiles/*.datafile >> /media/munin_files/datafile && rm -f /media/munin_files/generated_dbfiles/*.datafile && /usr/bin/munin-cron
+
+
 main:
 sets 
   collected_file_table ['customer_id', 'host_id', 'plugin_id', 'file_name', 'file_md5', 'size', 'status'];

@@ -34,8 +34,8 @@ my $uploads_dir = $config->{dir_paths}->{uploads_dir};
 make_path($uploads_dir, $config->{dir_paths}->{filedone_dir}, $config->{dir_paths}->{fileerr_dir});
 
 my $inotify = Linux::Inotify2->new;
-my $threads_stats = 0;
-my $threads_extract = 0;
+my $threads_stats = 1;
+my $threads_extract = 1;
 my $threads_munin = 1;
 my $threads_log = 0;
 my $watched_folders;

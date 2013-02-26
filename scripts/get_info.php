@@ -17,7 +17,7 @@ function rebuild_plugin($customer, $hostname, $extra){
     $text = $extra->text;
     $plugin_id = $extra->id;
     $sample_rate = $extra->sample_rate;
-error_log("to be done rebuild plugn\n");
+error_log("to be done rebuild plugin\n");
     print json_encode( "TBD" );
 }
 

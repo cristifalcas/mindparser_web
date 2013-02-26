@@ -56,6 +56,7 @@ sub insertFile {
 
 sub increasePluginQueue {
     my ($self, $plugin_id) = @_;
+    LOGDIE "Wrong plugin.\n" if $plugin_id < 1;
     $db_h->do("update $config->{db_config}->{plugins_table} 
 		      set files_queue=IFNULL(files_queue, 0) + 1 WHERE id=$plugin_id")
 	  || LOGDIE "Error $DBI::errstr\n";
@@ -63,6 +64,7 @@ sub increasePluginQueue {
 
 sub decreasePluginQueue {
     my ($self, $plugin_id) = @_;
+    LOGDIE "Wrong plugin.\n" if $plugin_id < 1;
     $db_h->do("update $config->{db_config}->{plugins_table} 
 		      set files_queue=files_queue - 1 WHERE id=$plugin_id")
 	  || LOGDIE "Error $DBI::errstr\n";
@@ -75,6 +77,7 @@ sub nulifyPluginsQueue {
 
 sub getPluginQueue {
     my ($self, $plugin_id) = @_;
+    LOGDIE "Wrong plugin.\n" if $plugin_id < 1;
     my $res = $db_h->selectrow_arrayref("select id from $config->{db_config}->{plugins_table} WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
     return  $res->[0];
 }
@@ -133,7 +136,7 @@ sub getIDUsed {
     push @sel, "$_=".(shift @$vals) foreach @$cols;
     my $res = $db_h->selectrow_arrayref("select id from $table_name where ".(join " and ", @sel));
     LOGDIE "Error $DBI::errstr\n" if defined $DBI::errstr;
-#     LOGDIE "Strange shit:\n".Dumper($table_name, $cols_old, $vals_old) if ! defined $res->[0];
+    LOGDIE "Strange shit:\n".Dumper($res, $table_name, $cols_old, $vals_old, "select id from $table_name where ".(join " and ", @sel)) if defined $res && (scalar @$res != 1 || ! defined $res->[0]);
     return  $res->[0];
 }
 
@@ -144,6 +147,7 @@ sub getQuotedString {
 
 sub setPluginDefaults {
     my ($self, $plugin_id) = @_;
+    LOGDIE "Wrong plugin.\n" if $plugin_id < 1;
     my $plugin_info = $db_h->selectrow_arrayref("select inserted_in_tablename, plugin_name from $config->{db_config}->{plugins_table} where id=$plugin_id");
     my ($sth, @columns);
     $sth = $db_h->prepare("SELECT * FROM $plugin_info->[0] WHERE 1=0");
@@ -191,6 +195,7 @@ sub getColumnList {
 
 sub getGroupsForPlugin {
     my ($self, $plugin_id) = @_;
+    LOGDIE "Wrong plugin.\n" if $plugin_id < 1;
     my $res = $db_h->selectrow_arrayref("select inserted_in_tablename, host_id from $config->{db_config}->{plugins_table} WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
     return $db_h->selectall_arrayref("SELECT DISTINCT group_by FROM $res->[0] WHERE host_id=$res->[1]") || LOGDIE "Error $DBI::errstr\n";
 }
@@ -368,10 +373,11 @@ sub get_md5_names {
     return $res;
 } 
 
-sub get_plugin_update_rate {
-    my ($self, $plugin_id) = @_;
-    return 300;
-}
+# sub get_plugin_update_rate {
+#     my ($self, $plugin_id) = @_;
+#     my $rate = $db_h->selectall_arrayref("select update_rate from $config->{db_config}->{plugins_table} WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
+#     return $rate->[0] || -1;
+# }
 
 sub add_new_columns {
     my ($self, $table_name, $arr) = @_;
@@ -399,7 +405,14 @@ sub add_new_columns {
 
 sub setNeedsUpdate {
     my ($self, $plugin_id, $status) = @_;
-    $db_h->do("update $config->{db_config}->{plugins_table} set needs_update=$status WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
+    LOGDIE "Wrong plugin $plugin_id.\n" if $plugin_id < 1;
+    $db_h->do("update $config->{db_config}->{plugins_table} set needs_update_date=NOW() WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
+}
+
+sub setDoneNeedsUpdate {
+    my ($self, $plugin_id, $status) = @_;
+    LOGDIE "Wrong plugin $plugin_id.\n" if $plugin_id < 1;
+    $db_h->do("update $config->{db_config}->{plugins_table} set last_update_date=NOW() WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub getMuninNoRRD {
@@ -412,12 +425,12 @@ sub getMuninNoRRD {
 	next if $custs->{$cust_name}->{id} < 1;
 	my $hosts = $custs->{$cust_name}->{hosts};
 	foreach my $host_name (sort keys %$hosts) {
-	    my $hash = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_table} where host_id=$hosts->{$host_name} and customer_id=$custs->{$cust_name}->{id}", ['id']);
-	    foreach my $plugin_id ( sort keys %$hash) {
-		my @files = glob("$munin_config->{dbdir}/$cust_name/$host_name.$cust_name-$hash->{$plugin_id}->{plugin_name}*");
+	    my $hash_plugins = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_table} where host_id=$hosts->{$host_name} and customer_id=$custs->{$cust_name}->{id} and update_rate>0 and needs_update_date<=IFNULL(last_update_date,0)", ['id']);
+	    foreach my $plugin_id ( sort keys %$hash_plugins) {
+		my @files = glob("$munin_config->{dbdir}/$cust_name/$host_name.$cust_name-$hash_plugins->{$plugin_id}->{plugin_name}*");
 		if (! scalar @files) {
-		    DEBUG "Plugin $hash->{$plugin_id}->{plugin_name} has no rrd files. Force reimport.\n";
-		    $self->setNeedsUpdate($plugin_id, 1);
+		    INFO "Plugin $hash_plugins->{$plugin_id}->{plugin_name} has no rrd files. Force reimport.\n";
+		    $self->setNeedsUpdate($plugin_id);
 		}
 	    }
 	}
@@ -429,9 +442,7 @@ sub getWorkForMunin {
     my ($self, $status) = @_;
     $self->getMuninNoRRD();
     use Time::Local;
-    my $res = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_table} where files_queue=0 and needs_update>0", ['id']);
-#     use Storable qw(dclone);
-#     my $return = dclone($res);
+    my $res = $db_h->selectall_hashref("select * from $config->{db_config}->{plugins_table} where files_queue=0 and needs_update_date>IFNULL(last_update_date,0) and update_rate>0", ['id']);
     foreach (sort keys %$res){
 # 	wait 5 minutes from last file inserted
 	my ($last_time) = @{ $db_h->selectrow_arrayref("select ".(timegm(gmtime))."-unix_timestamp(max(parse_done_time)) from $config->{db_config}->{collected_file_table} where plugin_id=$_") };
