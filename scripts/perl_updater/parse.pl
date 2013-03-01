@@ -37,6 +37,7 @@ my $inotify = Linux::Inotify2->new;
 my $threads_stats = 1;
 my $threads_extract = 1;
 my $threads_munin = 1;
+my $threads_grapher = 1;
 my $threads_log = 0;
 my $watched_folders;
 
@@ -189,6 +190,18 @@ sub munin_worker {
     return $ret;
 }
 
+sub graphs_getwork {
+    my $dbh = shift;
+    return $dbh->getWorkForGrapher(START_GRAPH);
+}
+
+sub graphs_worker {
+    my ($dbh, $data, $args) = @_;
+    use Mind_work::GraphWork;
+    my $ret = GraphWork::run($data, $dbh);
+    return $ret;
+}
+
 sub statistics_worker {
     my ($dbh, $data, $args) = @_;
     use Mind_work::ParseStats;
@@ -247,6 +260,9 @@ sub main_process_worker {
     $pid = fork();
     if (!$pid) {INFO "Starting forker process logparser.\n";focker_launcher(\&logparser_worker, \&logparser_getwork, $threads_log); exit 0;};
     $forks->{$pid} = "logs";
+    $pid = fork();
+    if (!$pid) {INFO "Starting forker process grapher.\n";focker_launcher(\&graphs_worker, \&graphs_getwork, $threads_grapher); exit 0;};
+    $forks->{$pid} = "graphs";
     $pid = fork();
     if (!$pid) {INFO "Starting forker process munin.\n";sleep 2;focker_launcher(\&munin_worker, \&munin_getwork, $threads_munin); exit 0;};
     $forks->{$pid} = "munin";

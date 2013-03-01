@@ -1,15 +1,26 @@
-ssh-keygen -t rsa
-cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+m1 connects to m2
+on m1: ssh-keygen -t rsa
+on m1: cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+on m2: put in ~/.ssh/authorized_keys the above key
+
+cat /etc/rc.d/rc.local
+#!/bin/sh
+/usr/sbin/munin-asyncd >> /var/log/munin-node/munin-asyncd.log &
+exit 0
 
 cat /etc/cron.d/munin:
 */5 * * * *     munin test -x /usr/bin/munin-cron && cat /media/munin_files/generated_dbfiles/*.datafile >> /media/munin_files/datafile && rm -f /media/munin_files/generated_dbfiles/*.datafile && /usr/bin/munin-cron
 
 
 main:
-sets 
+sets
   collected_file_table ['customer_id', 'host_id', 'plugin_id', 'file_name', 'file_md5', 'size', 'status'];
 
 extract: 
 sets 
   collected_file_table ['plugin_id', 'status']
   plugins_table ['customer_id', 'host_id', 'inserted_in_tablename', 'worker_type', 'app_name', 'plugin_name', 'update_rate', 'needs_update', 'files_queue'++];
+
+conf:
+average (no spaces, uppercase): caca.h10.cdef h6,h8,2,AVG
+

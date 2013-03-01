@@ -197,7 +197,7 @@ sub getGroupsForPlugin {
     my ($self, $plugin_id) = @_;
     LOGDIE "Wrong plugin.\n" if $plugin_id < 1;
     my $res = $db_h->selectrow_arrayref("select inserted_in_tablename, host_id from $config->{db_config}->{plugins_table} WHERE id=$plugin_id") || LOGDIE "Error $DBI::errstr\n";
-    return $db_h->selectall_arrayref("SELECT DISTINCT group_by FROM $res->[0] WHERE host_id=$res->[1]") || LOGDIE "Error $DBI::errstr\n";
+    return $db_h->selectall_arrayref("SELECT DISTINCT group_by FROM $res->[0] WHERE host_id=$res->[1] order by group_by") || LOGDIE "Error $DBI::errstr\n";
 }
 
 sub getCustomers {
@@ -485,6 +485,9 @@ sub getWorkForLogParsers {
 
     TRACE "Got ".(scalar keys %$hash )." files for log parser.\n" if scalar keys %$hash;
     return $hash;
+}
+
+sub getWorkForGrapher {
 }
 
 sub removeDuplicatePaths {
